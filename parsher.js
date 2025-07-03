@@ -118,7 +118,7 @@ const statuses = [
   { name: 'hicckimse 🤍 MED', type: 'LISTENING' },
   { name: 'MED 🤎 hicckimse', type: 'LISTENING' },
   { name: 'hicckimse 💜 MED', type: 'LISTENING' },
-  { name: 'MED 🩵 hicckimse', type: 'LISTENING' },
+  { name: 'MED ❤ hicckimse', type: 'LISTENING' },
   { name: 'hicckimse 💙 MED', type: 'LISTENING' }
 ];
 let statusIndex = 0;
