@@ -10,7 +10,7 @@ module.exports = {
     aliases: [],
     async execute(client, message, args) {
 
-        if (!message.member.hasPermission('MANAGE_CHANNELS') && message.author.id !== ayar.sahip) return message.lineReply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
+        if (!message.member.hasPermission('MANAGE_CHANNELS') && message.author.id !== ayar.sahip) return message.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
         let üye = message.guild.member(message.mentions.users.first()) || message.guild.members.cache.get(args[1]);
         let rol = message.mentions.roles.first() || message.guild.roles.cache.get(args[2]);
 
