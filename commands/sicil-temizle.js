@@ -10,14 +10,14 @@ module.exports = {
     aliases: ['siciltemizle'],
     async execute(client, message, args) {
 
-        if (message.author.id !== ayar.sahip) return message.lineReply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
+        if (message.author.id !== ayar.sahip) return message.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
 
         let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!üye) return message.lineReply('`Sicil temizleyebilmek için bir üye belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
+        if (!üye) return message.reply('`Sicil temizleyebilmek için bir üye belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
         let uye = message.guild.member(üye);
         let guild = message.guild;
 
         db.delete(`üye.${uye.id}.sicil`, `üye.${uye.id}.uyarılar`, `üye.${uye.id}.ssicil`);
-        message.lineReply(`${uye} \`başarıyla sicili temizlendi!\``);
+        message.reply(`${uye} \`başarıyla sicili temizlendi!\``);
     }
 }
