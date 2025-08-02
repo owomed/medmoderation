@@ -8,18 +8,18 @@ module.exports = {
     aliases: ['yasakla'],
     async execute(client, message, args) {
         if (!message.member.hasPermission('BAN_MEMBERS') && !message.member.roles.cache.some(role => id.Ban.banyetkiliid.includes(role.id)) && message.author.id !== ayar.sahip) {
-            return message.lineReply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
+            return message.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
         }
 
         let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
         let sebep = args.slice(1).join(' ');
 
         if (!üye && !args[0]) {
-            return message.lineReply('`Banlayabilmek için üye veya ID ve sebep belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
+            return message.reply('`Banlayabilmek için üye veya ID ve sebep belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
         }
 
         if (!sebep) {
-            return message.lineReply('`Banlayabilmek için sebep belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
+            return message.reply('`Banlayabilmek için sebep belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
         }
 
         
@@ -47,7 +47,7 @@ module.exports = {
                     .addField('Komut', `-ban ${args[0]} ${sebep}`, true);
 
                 // Embed mesajı kanala gönder
-                await message.lineReply('`Belirtilen ID başarıyla banlandı!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarılıemojiid));
+                await message.reply('`Belirtilen ID başarıyla banlandı!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarılıemojiid));
                 await message.channel.send({ embed: embed });
 
                 // Log kanalına embed mesajı gönder
@@ -59,12 +59,12 @@ module.exports = {
                 }
             } catch (error) {
                 console.error('ID ile ban işlemi sırasında bir hata oluştu:', error);
-                return message.lineReply('`ID ile ban işlemi sırasında bir hata oluştu!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarısızemojiid));
+                return message.reply('`ID ile ban işlemi sırasında bir hata oluştu!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarısızemojiid));
             }
         } else {
             // Sunucuda olan kullanıcıyı banla
             if (message.member.roles.highest.position <= üye.roles.highest.position) {
-                return message.lineReply('`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`').then(x => x.delete({ timeout: 3000 }));
+                return message.reply('`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`').then(x => x.delete({ timeout: 3000 }));
             }
 
             db.push(`üye.${üye.id}.sicil`, { Yetkili: message.author.id, Tip: "BAN", Sebep: sebep, Zaman: Date.now() });
@@ -84,7 +84,7 @@ module.exports = {
                     .addField('Komut', `-ban ${üye.id} ${sebep}`, true);
 
                 // Embed mesajı kanala gönder
-                await message.lineReply('`Etiketlenen üye başarıyla banlandı!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarılıemojiid));
+                await message.reply('`Etiketlenen üye başarıyla banlandı!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarılıemojiid));
                 await message.channel.send({ embed: embed });
 
                 // Log kanalına embed mesajı gönder
@@ -96,7 +96,7 @@ module.exports = {
                 }
             } catch (error) {
                 console.error('Ban işlemi sırasında bir hata oluştu:', error);
-                return message.lineReply('`Ban işlemi sırasında bir hata oluştu!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarısızemojiid));
+                return message.reply('`Ban işlemi sırasında bir hata oluştu!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarısızemojiid));
             }
         }
     }
