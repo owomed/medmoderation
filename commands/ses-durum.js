@@ -13,13 +13,13 @@ module.exports = {
         if (!message.member.hasPermission('ADMINISTRATOR') && message.author.id !== ayar.sahip) return message.lineReply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
 
         let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!üye) return message.lineReply('`Ses durumuna bakmak istediğiniz üyeyi belirtiniz!`').then(x => x.delete({ timeout: 3000 }));
-        if (!üye.voice.channel) return message.lineReply('`Üye ses kanalında bulunmamaktadır!`').then(x => x.delete({ timeout: 3000 }));
+        if (!üye) return message.reply('`Ses durumuna bakmak istediğiniz üyeyi belirtiniz!`').then(x => x.delete({ timeout: 3000 }));
+        if (!üye.voice.channel) return message.reply('`Üye ses kanalında bulunmamaktadır!`').then(x => x.delete({ timeout: 3000 }));
 
         let mic = üye.voice.selfMute ? "Kapalı" : "Açık";
         let kul = üye.voice.selfDeaf ? "Kapalı" : "Açık";
 
-        message.lineReply(`\`Etiketlenen üye (${message.guild.channels.cache.get(üye.voice.channelID).name}) adlı ses kanalında. Kullanıcının mikrofon durumu (${mic}), kulaklık durumu (${kul}) şeklindedir.\``).then(x => x.delete({ timeout: 7 * 1000 }), message.react(id.Emojiler.başarılıemojiid));
+        message.reply(`\`Etiketlenen üye (${message.guild.channels.cache.get(üye.voice.channelID).name}) adlı ses kanalında. Kullanıcının mikrofon durumu (${mic}), kulaklık durumu (${kul}) şeklindedir.\``).then(x => x.delete({ timeout: 7 * 1000 }), message.react(id.Emojiler.başarılıemojiid));
 
     }
 }
