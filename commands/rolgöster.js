@@ -11,7 +11,7 @@ module.exports = {
     async execute(client, message, args) {
 
         if (!message.member.hasPermission('ADMINISTRATOR') && message.author.id !== ayar.sahip) {
-            return message.lineReply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`')
+            return message.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`')
                 .then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
         }
 
@@ -19,14 +19,14 @@ module.exports = {
         let rol = message.mentions.roles.first() || message.guild.roles.cache.get(args[0]);
 
         if (!rol) {
-            return message.lineReply("`Rol görüntüleyebilmek için bir rol etiketlemeli veya rol ID'si girmelisin.`")
+            return message.reply("`Rol görüntüleyebilmek için bir rol etiketlemeli veya rol ID'si girmelisin.`")
                 .then(x => x.delete({ timeout: 3000 }));
         }
 
         let members = message.guild.members.cache.filter(x => x.roles.cache.has(rol.id)).map(y => y.user);
         let total = members.length;
 
-        message.lineReply(`\`• ${rol.name} rolünde (${total}) kişi bulunmakta.\`\n\n__Rolü Bulunduran Kullanıcılar__\n${rol.members.map(uye => `• <@${uye.id}> \`(${uye.id})\``).join("\n")}`)
+        message.reply(`\`• ${rol.name} rolünde (${total}) kişi bulunmakta.\`\n\n__Rolü Bulunduran Kullanıcılar__\n${rol.members.map(uye => `• <@${uye.id}> \`(${uye.id})\``).join("\n")}`)
             .then(x => x.delete({ timeout: 7000 }), message.react(id.Emojiler.başarılıemojiid));
     }
 }
