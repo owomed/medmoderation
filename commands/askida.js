@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const id = require('../Settings/idler.json'); // idler.json'ı dahil edin
+const ayar = require('../Settings/config.json'); // config.json'ı dahil edin
 
 const yetkiliRolleri = [
     "1189127683653783552", "1236282803675467776", "1236290869716455495",
@@ -38,45 +40,56 @@ module.exports = {
         .addUserOption(option =>
             option.setName('kullanıcı')
                 .setDescription('Askıya alınacak veya askıdan çıkarılacak kullanıcı.')
-                .setRequired(true))
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator), // Sadece yöneticiler kullanabilir
-
+                .setRequired(true)),
+    
     // Hem slash hem de prefix için çalışacak ana fonksiyon
     async execute(interactionOrMessage) {
-        let member, authorId, channel;
+        let member, author, channel;
         const askidaData = getAskidaData();
+
+        // Yetkili rol ID'si
+        const yetkiliAlimRolID = id.YetkiliAlim.yetkilialimrolid;
+        const botSahipID = ayar.sahip;
 
         // Prefix ve Slash komut ayrımı
         if (interactionOrMessage.isCommand?.()) {
             // Slash komutu
             member = interactionOrMessage.options.getMember('kullanıcı');
-            authorId = interactionOrMessage.user.id;
+            author = interactionOrMessage.user;
             channel = interactionOrMessage.channel;
-
-            if (!member) {
-                return interactionOrMessage.reply({ content: 'Lütfen geçerli bir kullanıcı etiketleyin.', ephemeral: true });
-            }
         } else {
             // Prefix komutu
             const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
             member = interactionOrMessage.mentions.members.first() || interactionOrMessage.guild.members.cache.get(args[1]);
-            authorId = interactionOrMessage.author.id;
+            author = interactionOrMessage.author;
             channel = interactionOrMessage.channel;
-            
-            if (!member) {
-                return interactionOrMessage.reply('Lütfen geçerli bir kullanıcı etiketleyin.');
+        }
+
+        // --- Yetki Kontrolü ---
+        const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
+
+        if (!isAuthorized) {
+            const replyMessage = '`Bu komutu sadece bot sahibi veya yetkili alım rolüne sahip kişiler kullanabilir.`';
+            if (interactionOrMessage.isCommand?.()) {
+                return interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
+            } else {
+                return interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+            }
+        }
+
+        // Kullanıcı geçerlilik kontrolü
+        if (!member) {
+            const replyMessage = '`Lütfen geçerli bir kullanıcı etiketleyin.`';
+            if (interactionOrMessage.isCommand?.()) {
+                return interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
+            } else {
+                return interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
             }
         }
         
-        // Komutu sadece bot sahibi kullanabilir kontrolü
-        // config.sahip yerine ID'yi doğrudan buraya yazabilirsiniz veya index.js'te bu değeri tanımlayın.
-        // if (authorId !== "BOT_SAHIBI_ID") {
-        //   return channel.send("`Bu komutu sadece bot sahibi kullanabilir.`");
-        // }
-
         const memberId = member.id;
         
-        // Zaten askıya alınmışsa => geri iade et
+        // --- Zaten askıya alınmışsa => geri iade et ---
         if (askidaData[memberId]) {
             const oncekiRoller = askidaData[memberId];
             
@@ -100,7 +113,6 @@ module.exports = {
                 } else {
                     await channel.send(replyContent);
                 }
-
             } catch (error) {
                 console.error('Rolleri geri verirken bir hata oluştu:', error);
                 const replyContent = 'Rolleri geri verirken bir hata oluştu.';
@@ -113,7 +125,7 @@ module.exports = {
             return;
         }
         
-        // Yeni askıya alınıyorsa
+        // --- Yeni askıya alınıyorsa ---
         const alinacakRoller = member.roles.cache
             .filter(r => yetkiliRolleri.includes(r.id))
             .map(r => r.id);
