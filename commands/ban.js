@@ -1,11 +1,10 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, GuildMember } = require('discord.js');
-// quick.db yerine kalıcı bir DB kullanmanızı tavsiye ederim, şimdilik bu şekilde bırakıyorum
 const db = require("quick.db"); 
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
 
 module.exports = {
-    // Slash komutu verisi
+    // Slash komutu verisi - artık izin ayarı yok, komut herkese görünür olacak
     data: new SlashCommandBuilder()
         .setName('ban')
         .setDescription('Belirtilen kullanıcıyı sunucudan yasaklar.')
@@ -16,12 +15,12 @@ module.exports = {
         .addStringOption(option =>
             option.setName('sebep')
                 .setDescription('Yasaklama sebebi.')
-                .setRequired(true))
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers), // Sadece Banlama izni olanlar kullanabilir
+                .setRequired(true)),
 
     // Hem slash hem de prefix için çalışacak ana fonksiyon
     async execute(interactionOrMessage) {
         let member, reason, targetId, channel, author, isSlash;
+        const banYetkiliRolleri = id.Ban.banyetkiliid;
 
         if (interactionOrMessage.isCommand?.()) {
             isSlash = true;
@@ -40,15 +39,18 @@ module.exports = {
             targetId = args[1];
         }
 
-        // İzin kontrolü
-        // `PermissionsBitField.Flags.BanMembers` yerine isterseniz özel rol kontrolü de yapabilirsiniz.
-        if (isSlash) {
-            if (!interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.BanMembers) && author.id !== ayar.sahip) {
-                return interactionOrMessage.reply({ content: '`Bu komutu kullanmak için gerekli izinlere sahip değilsin!`', ephemeral: true });
-            }
-        } else {
-            if (!interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.BanMembers) && !interactionOrMessage.member.roles.cache.some(role => id.Ban.banyetkiliid.includes(role.id)) && author.id !== ayar.sahip) {
-                return interactionOrMessage.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => setTimeout(() => x.delete(), 3000));
+        // Yetki Kontrolü
+        const isAuthorized = 
+            interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.Administrator) ||
+            interactionOrMessage.member.roles.cache.some(role => banYetkiliRolleri.includes(role.id)) ||
+            author.id === ayar.sahip;
+        
+        if (!isAuthorized) {
+            const replyMessage = '`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`';
+            if (isSlash) {
+                return interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
+            } else {
+                return interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
             }
         }
 
@@ -77,7 +79,6 @@ module.exports = {
             userToBan = member;
         } else {
             try {
-                // ID ile kullanıcıyı al
                 userToBan = await interactionOrMessage.client.users.fetch(targetId);
             } catch {
                 const replyMessage = '`Geçerli bir kullanıcı veya ID belirtmedin!`';
@@ -89,19 +90,16 @@ module.exports = {
             }
         }
 
-        // Banlama işlemi ve veritabanına kaydetme
         try {
             await interactionOrMessage.guild.members.ban(userToBan.id, { reason: reason });
 
-            // Veri tabanına ekle
             db.push(`üye.${userToBan.id}.sicil`, { Yetkili: author.id, Tip: "BAN", Sebep: reason, Zaman: Date.now() });
 
-            // Embed oluştur
             const banEmbed = new EmbedBuilder()
                 .setColor('#FF0000')
                 .setTitle('Kullanıcı Yasaklandı')
                 .setDescription(`${userToBan.tag} (\`${userToBan.id}\`) sunucudan yasaklandı.`)
-                .setImage('https://c.tenor.com/ai7K4FV5RiEAAAAC/tenor.gif') // İki farklı gif yerine tek bir sabit gif kullanmak daha pratik
+                .setImage('https://c.tenor.com/ai7K4FV5RiEAAAAC/tenor.gif')
                 .addFields(
                     { name: 'Sebep', value: reason },
                     { name: 'Yasaklayan Yetkili', value: `<@${author.id}>`, inline: true }
@@ -109,7 +107,6 @@ module.exports = {
                 .setTimestamp()
                 .setFooter({ text: `${author.tag} tarafından`, iconURL: author.displayAvatarURL({ dynamic: true }) });
 
-            // Kullanıcıya ve log kanalına embed gönderme
             const logChannel = interactionOrMessage.client.channels.cache.get(id.Ban.banlogkanalid);
 
             const successMessage = isSlash ? `\`${userToBan.tag}\` başarıyla yasaklandı!` : `\`${userToBan.tag}\` başarıyla yasaklandı!`;
