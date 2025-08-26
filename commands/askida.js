@@ -48,7 +48,7 @@ module.exports = {
         const askidaData = getAskidaData();
 
         // Yetkili rol ID'si
-        const yetkiliAlimRolID = id.YetkiliAlim.yetkilialimrolid;
+        const yetkiliAlimRolID = id.YetkiliAlim.yetkilialim;
         const botSahipID = ayar.sahip;
 
         // Prefix ve Slash komut ayrımı
