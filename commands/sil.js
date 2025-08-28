@@ -1,78 +1,85 @@
-const Discord = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, ChannelType } = require('discord.js');
+const id = require('../Settings/idler.json'); // idler.json dosyanız
+const ayar = require('../Settings/config.json'); // config.json dosyanız
 
 module.exports = {
-    name: 'sil',
-    description: 'Belirtilen sayıda mesajı siler.',
-    async execute(client, message, args) {
-        const allowedRoleId = '1236394142788091995'; // Komutu kullanma izni olan rol ID'si
-        const logChannelId = '1237313793437204512'; // Log kanalının ID'si
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('sil')
+        .setDescription('Belirtilen sayıda mesajı siler.')
+        .addIntegerOption(option =>
+            option.setName('miktar')
+                .setDescription('Silinecek mesaj sayısı (1-500).')
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(500)),
 
-        // Kullanıcı izinlerini kontrol et
-        if (!message.member.roles.cache.has(allowedRoleId)) {
-            const embed = new Discord.MessageEmbed()
-                .setColor('#FF0000')
-                .setTitle('Yetkisiz Kullanım')
-                .setDescription('Bu komutu kullanma izniniz yok. <a:med_hayir:1240942589977559081>')
-                .setTimestamp();
-            return message.channel.send(embed);
-        }
+    // Prefix komut bilgisi
+    name: 'sil',
+    aliases: ['clear', 'temizle', 'delete'],
 
-        const amount = parseInt(args[0], 10);
-        if (isNaN(amount) || amount < 1 || amount > 500) {
-            const embed = new Discord.MessageEmbed()
-                .setColor('#FF0000')
-                .setTitle('Hatalı Giriş')
-                .setDescription('Lütfen 1 ile 500 arasında bir sayı girin. <a:med_alert:1235237329799614619>')
-                .setTimestamp();
-            return message.channel.send(embed);
-        }
+    async execute(interactionOrMessage) {
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
+        const guild = interactionOrMessage.guild;
+        const channel = interactionOrMessage.channel;
+        
+        let amount;
+        if (isSlash) {
+            amount = interactionOrMessage.options.getInteger('miktar');
+        } else {
+            const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
+            amount = parseInt(args[1], 10);
+        }
 
-        let deletedMessages = 0;
-        try {
-            while (deletedMessages < amount) {
-                const deleteCount = Math.min(amount - deletedMessages, 100);
-                const deleted = await message.channel.bulkDelete(deleteCount, true);
-                deletedMessages += deleted.size;
+        // Yetki kontrolü (MANAGE_MESSAGES izni veya bot sahibi)
+        if (!interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.ManageMessages) && author.id !== ayar.sahip) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Yetkisiz Kullanım')
+                .setDescription('`Bu komutu kullanmak için gerekli izinlere sahip değilsin!`');
+            return isSlash 
+                ? interactionOrMessage.reply({ embeds: [embed], ephemeral: true })
+                : interactionOrMessage.reply({ embeds: [embed] }).then(msg => setTimeout(() => msg.delete(), 5000));
+        }
 
-                if (deleted.size < deleteCount) break;
-            }
+        // Miktar kontrolü
+        if (isNaN(amount) || amount < 1 || amount > 500) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Hatalı Giriş')
+                .setDescription('Lütfen 1 ile 500 arasında bir sayı girin.');
+            return isSlash
+                ? interactionOrMessage.reply({ embeds: [embed], ephemeral: true })
+                : interactionOrMessage.reply({ embeds: [embed] }).then(msg => setTimeout(() => msg.delete(), 5000));
+        }
+        
+        // Slash komutları için ön yanıt
+        if (isSlash) {
+            await interactionOrMessage.deferReply({ ephemeral: true });
+        }
 
-            const embed = new Discord.MessageEmbed()
-                .setColor('#00FF00')
-                .setTitle('Mesajlar Silindi')
-                .setDescription(`${deletedMessages} mesaj silindi. <a:med_verifyanimated:1235320557747310692>`)
-                .setTimestamp();
+        let deletedMessagesCount = 0;
+        try {
+            let remaining = amount;
+            while (remaining > 0) {
+                const fetchedMessages = await channel.messages.fetch({ limit: Math.min(remaining, 100) });
+                const deletableMessages = fetchedMessages.filter(m => !m.pinned); // Sabitlenmiş mesajları silme
+                
+                if (deletableMessages.size === 0) break; // Silinecek mesaj kalmadıysa döngüyü sonlandır
+                
+                const deleted = await channel.bulkDelete(deletableMessages, true);
+                deletedMessagesCount += deleted.size;
+                remaining -= deleted.size;
+                if (deleted.size < Math.min(remaining, 100)) break;
+            }
 
-            message.channel.send(embed).then(msg => {
-                setTimeout(() => msg.delete(), 5000);
-            }).catch(console.error);
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Mesajlar Silindi')
+                .setDescription(`\`${deletedMessagesCount}\` adet mesaj başarıyla silindi.`)
+                .setTimestamp();
 
-            // Mesaja emoji tepki ekleme
-            message.react('🚮');
-
-            // Log kanalına mesaj gönderme
-            const logChannel = message.guild.channels.cache.get(logChannelId);
-            if (logChannel) {
-                const logEmbed = new Discord.MessageEmbed()
-                    .setColor('#00FF00')
-                    .setTitle('Mesajlar Silindi')
-                    .setDescription(`Kanal: ${message.channel.name}\nSilinen mesaj sayısı: ${deletedMessages}`)
-                    .setTimestamp()
-                    .setAuthor(message.author.tag, message.author.displayAvatarURL({ dynamic: true }))
-                    .addField('Komutu Kullanan', `<@${message.author.id}>`, true)
-                    .addField('Kanal', `${message.channel}`, true)
-                    .addField('Komut', `-sil ${amount}`, true);
-
-                logChannel.send(logEmbed);
-            }
-        } catch (error) {
-            console.error('Silme işlemi sırasında bir hata oluştu:', error);
-            const embed = new Discord.MessageEmbed()
-                .setColor('#FF0000')
-                .setTitle('Hata')
-                .setDescription('Mesajlar silinirken bir hata oluştu.')
-                .setTimestamp();
-            return message.channel.send(embed);
-        }
-    }
-};
+            if (isSlash) {
+                await interactionOrMessage.editReply({ embeds: [embed] });
+                setTimeout(() => interactionOrMessage.deleteReply(), 50
