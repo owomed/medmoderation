@@ -1,52 +1,90 @@
-const fetch = require('node-fetch');
+const { SlashCommandBuilder } = require('discord.js');
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
 
 module.exports = {
-    name: 'ekle',
-    description: 'Sunucuya emoji ekler.',
-    args: true,
-    usage: '<emoji-url> <emoji-name>',
-    async execute(client, message, args) {
-        // İzin verilen rollerin ID'leri
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('ekle')
+        .setDescription('Sunucuya emoji ekler.')
+        .addStringOption(option =>
+            option.setName('url')
+                .setDescription('Emoji resmi URL\'si.')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('isim')
+                .setDescription('Eklemek istediğiniz emojinin ismi.')
+                .setRequired(true)),
+
+    // Hem slash hem de prefix için çalışacak ana fonksiyon
+    async execute(interactionOrMessage) {
+        // İzin verilen rollerin ve kullanıcının ID'lerini belirle
         const allowedRoleIDs = ['1216094391060529393', '1188389290292551740', '1236317902295138304'];
-        // İzin verilen kullanıcı ID'si
         const allowedUserID = '711933653482995817';
         
-        // Kullanıcının uygun role sahip olup olmadığını kontrol et
-        const hasRolePermission = message.member.roles.cache.some(role => allowedRoleIDs.includes(role.id));
-        // Kullanıcının ID'sini kontrol et
-        const hasUserPermission = message.author.id === allowedUserID;
+        let emojiUrl, emojiName, author, channel, isSlash;
         
-        // Kullanıcının yetkisi olup olmadığını kontrol et
+        // Prefix ve Slash komut ayrımı
+        if (interactionOrMessage.isCommand?.()) {
+            isSlash = true;
+            emojiUrl = interactionOrMessage.options.getString('url');
+            emojiName = interactionOrMessage.options.getString('isim');
+            author = interactionOrMessage.user;
+            channel = interactionOrMessage.channel;
+        } else {
+            isSlash = false;
+            const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
+            const [url, ...nameParts] = args.slice(1);
+            emojiUrl = url;
+            emojiName = nameParts.join(' ').trim();
+            author = interactionOrMessage.author;
+            channel = interactionOrMessage.channel;
+        }
+
+        // Yetki kontrolü
+        const hasRolePermission = interactionOrMessage.member.roles.cache.some(role => allowedRoleIDs.includes(role.id));
+        const hasUserPermission = author.id === allowedUserID;
+
         if (!hasRolePermission && !hasUserPermission) {
-            return message.reply('`Bu komutu kullanma izniniz yok.`');
+            const replyContent = '`Bu komutu kullanma izniniz yok.`';
+            if (isSlash) {
+                return interactionOrMessage.reply({ content: replyContent, ephemeral: true });
+            } else {
+                return interactionOrMessage.reply(replyContent);
+            }
         }
-
-        // Emoji URL ve ismini al
-        const [emojiUrl, ...nameParts] = args;
-        const emojiName = nameParts.join(' ').trim();
-        if (!emojiUrl || !emojiName) {
-            return message.reply('`Lütfen bir emoji URL\'si ve isim girin.`');
-        }
-
+        
         // Emoji ismini geçerli bir formatta kontrol et
-        if (emojiName.length < 2 || emojiName.length > 32 || !/^[\w-]+$/.test(emojiName)) {
-            return message.reply('`Emoji ismi 2-32 karakter arasında olmalı ve sadece alfanümerik karakterler ve alt çizgi içermelidir.`');
+        if (!emojiName || emojiName.length < 2 || emojiName.length > 32 || !/^[\w-]+$/.test(emojiName)) {
+            const replyContent = '`Emoji ismi 2-32 karakter arasında olmalı ve sadece alfanümerik karakterler ve alt çizgi içermelidir.`';
+            if (isSlash) {
+                return interactionOrMessage.reply({ content: replyContent, ephemeral: true });
+            } else {
+                return interactionOrMessage.reply(replyContent);
+            }
         }
 
         try {
-            // URL'den emoji resmini kontrol et ve fetch ile al
-            const response = await fetch(emojiUrl);
-            if (!response.ok) {
-                throw new Error('Emoji resmi yüklenemedi.');
+            await interactionOrMessage.guild.emojis.create({ attachment: emojiUrl, name: emojiName });
+            const successContent = '`Emoji başarıyla eklendi!`';
+            if (isSlash) {
+                await interactionOrMessage.reply({ content: successContent, ephemeral: false });
+            } else {
+                await interactionOrMessage.reply(successContent);
             }
-            const imageBuffer = await response.buffer();
-
-            // Emoji'yi URL'den ekle
-            await message.guild.emojis.create(imageBuffer, emojiName);
-            message.reply('`Emoji başarıyla eklendi!`');
         } catch (error) {
             console.error('Emoji eklenirken bir hata oluştu:', error);
-            message.reply('Emoji eklenirken bir hata oluştu.');
+            const errorContent = `Emoji eklenirken bir hata oluştu: \`${error.message}\``;
+            if (isSlash) {
+                await interactionOrMessage.reply({ content: errorContent, ephemeral: true });
+            } else {
+                await interactionOrMessage.reply(errorContent);
+            }
         }
     },
+    
+    // Prefix komutu bilgisi
+    name: 'ekle',
+    description: 'Sunucuya emoji ekler.',
+    aliases: ['addemoji'],
 };
