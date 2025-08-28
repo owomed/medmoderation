@@ -1,25 +1,73 @@
-const Discord = require("discord.js"),
-    client = new Discord.Client();
-require('discord-reply');
-const db = require("quick.db");
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, ChannelType } = require('discord.js');
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
 
 module.exports = {
-    name: 'nerede',
-    aliases: ['ses-bilgi', "sesbilgi", "ses-durum", "sesdurum"],
-    async execute(client, message, args) {
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('nerede')
+        .setDescription('Etiketlenen üyenin ses kanalındaki durumunu gösterir.')
+        .addUserOption(option =>
+            option.setName('kullanıcı')
+                .setDescription('Ses durumuna bakılacak kullanıcı.')
+                .setRequired(true)),
 
-        if (!message.member.hasPermission('ADMINISTRATOR') && message.author.id !== ayar.sahip) return message.lineReply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
+    // Prefix komut bilgisi
+    name: 'nerede',
+    aliases: ['ses-bilgi', 'sesbilgi', 'ses-durum', 'sesdurum'],
 
-        let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!üye) return message.reply('`Ses durumuna bakmak istediğiniz üyeyi belirtiniz!`').then(x => x.delete({ timeout: 3000 }));
-        if (!üye.voice.channel) return message.reply('`Üye ses kanalında bulunmamaktadır!`').then(x => x.delete({ timeout: 3000 }));
+    async execute(interactionOrMessage) {
+        let member, author, guild, isSlash;
 
-        let mic = üye.voice.selfMute ? "Kapalı" : "Açık";
-        let kul = üye.voice.selfDeaf ? "Kapalı" : "Açık";
+        if (interactionOrMessage.isCommand?.()) {
+            isSlash = true;
+            author = interactionOrMessage.user;
+            guild = interactionOrMessage.guild;
+            member = interactionOrMessage.options.getMember('kullanıcı');
+        } else {
+            isSlash = false;
+            author = interactionOrMessage.author;
+            guild = interactionOrMessage.guild;
+            const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
+            member = interactionOrMessage.mentions.members.first() || interactionOrMessage.guild.members.cache.get(args[1]);
+        }
+        
+        const yetkiliRolleri = id.Roles.roleyetkiliid; // Ayarlar dosyasındaki rol ID'sini buraya ekle
+        const requesterMember = await guild.members.fetch(author.id);
 
-        message.reply(`\`Etiketlenen üye (${message.guild.channels.cache.get(üye.voice.channelID).name}) adlı ses kanalında. Kullanıcının mikrofon durumu (${mic}), kulaklık durumu (${kul}) şeklindedir.\``).then(x => x.delete({ timeout: 7 * 1000 }), message.react(id.Emojiler.başarılıemojiid));
+        // Yetki kontrolü (Sadece Rol ve Sahip)
+        if (!requesterMember.roles.cache.some(r => yetkiliRolleri.includes(r.id)) && author.id !== ayar.sahip) {
+            const replyMessage = '`Bu komudu kullanmak için gerekli yetkili role sahip değilsin!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-    }
-}
+        // Üye kontrolü
+        if (!member) {
+            const replyMessage = '`Ses durumuna bakmak istediğiniz üyeyi belirtiniz!`';
+            return isSlash
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+
+        // Ses kanalı kontrolü
+        if (!member.voice.channel) {
+            const replyMessage = '`Üye ses kanalında bulunmamaktadır!`';
+            return isSlash
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+
+        // Durumları kontrol et
+        const micStatus = member.voice.selfMute ? "Kapalı 🔇" : "Açık 🎤";
+        const deafStatus = member.voice.selfDeaf ? "Kapalı 🎧" : "Açık 👂";
+        const streamStatus = member.voice.streaming ? "Açık 🔴" : "Kapalı 🟢";
+
+        const replyMessage = `\`Etiketlenen üye ${member.voice.channel.name} adlı ses kanalında. Kullanıcının mikrofon durumu (${micStatus}), kulaklık durumu (${deafStatus}) ve yayın durumu (${streamStatus}) şeklindedir.\``;
+
+        isSlash
+            ? await interactionOrMessage.reply({ content: replyMessage })
+            : await interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 7000));
+    }
+};
