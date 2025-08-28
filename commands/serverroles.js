@@ -1,55 +1,83 @@
-const { MessageEmbed } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 module.exports = {
-    name: 'serverroles',
-    aliases: ['server-roles'],
-    description: 'Sunucudaki rolleri ve üye sayılarını gösterir.',
-    execute(client, message, args) {
-        const guild = message.guild;
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('serverroles')
+        .setDescription('Sunucudaki tüm rolleri ve üye sayılarını gösterir.'),
 
-        if (!guild) {
-            return message.reply('Sunucu bilgileri alınırken bir hata oluştu.');
-        }
+    // Prefix komut bilgisi
+    name: 'serverroles',
+    aliases: ['server-roles', 'roles', 'roller'],
+    description: 'Sunucudaki rolleri ve üye sayılarını gösterir.',
 
-        guild.members.fetch().then(() => {
-            const roles = guild.roles.cache.map(role => {
-                const memberCount = role.members.size;
-                return {
-                    name: role.name,
-                    memberCount: memberCount
-                };
-            });
+    async execute(interactionOrMessage) {
+        const guild = interactionOrMessage.guild;
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
 
-            roles.sort((a, b) => b.memberCount - a.memberCount);
+        if (!guild) {
+            const replyMessage = 'Sunucu bilgileri alınırken bir hata oluştu.';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage);
+        }
 
-            const chunkSize = 40; // Her mesajda gösterilecek rol sayısını azaltarak
-            const totalChunks = Math.ceil(roles.length / chunkSize);
+        try {
+            // Tüm üyeleri önbelleğe almak, rollerin üye sayılarını doğru hesaplamak için önemlidir.
+            await guild.members.fetch(); 
 
-            for (let i = 0; i < totalChunks; i++) {
-                let response = '```\n';
-                response += `Sunucuda toplam ${roles.length} rol bulunmaktadır:\n\n`;
+            const roles = guild.roles.cache
+                .filter(role => role.id !== guild.id) // @everyone rolünü hariç tut
+                .sort((a, b) => b.position - a.position)
+                .map(role => {
+                    const memberCount = role.members.size;
+                    return `\`${role.name}\`: \`${memberCount}\` üye`;
+                });
+            
+            if (roles.length === 0) {
+                const replyMessage = 'Sunucuda @everyone rolü dışında bir rol bulunmuyor.';
+                return isSlash 
+                    ? interactionOrMessage.reply({ content: replyMessage })
+                    : interactionOrMessage.reply(replyMessage);
+            }
 
-                const startIndex = i * chunkSize;
-                const endIndex = Math.min(startIndex + chunkSize, roles.length);
-                const currentRoles = roles.slice(startIndex, endIndex);
+            const totalRoles = roles.length;
+            const roleChunks = [];
+            let currentChunk = "";
 
-                for (const role of currentRoles) {
-                    const roleLine = `Rol Adı: ${role.name} - Üye Sayısı: ${role.memberCount}\n`;
-                    if (response.length + roleLine.length + 4 > 2000) {
-                        response += '```';
-                        message.channel.send(response);
-                        response = '```\n';
-                    }
-                    response += roleLine;
-                }
+            roles.forEach(roleLine => {
+                if ((currentChunk + roleLine).length > 1024) {
+                    roleChunks.push(currentChunk);
+                    currentChunk = "";
+                }
+                currentChunk += (currentChunk === "" ? "" : "\n") + roleLine;
+            });
+            roleChunks.push(currentChunk);
 
-                response += '```';
+            const mainEmbed = new EmbedBuilder()
+                .setColor('Random')
+                .setTitle(`Sunucudaki Roller (${totalRoles} adet)`)
+                .setDescription('Aşağıda her bir rol ve sahip olan üye sayısı listelenmiştir.');
 
-                message.channel.send(response);
-            }
-        }).catch(error => {
-            console.error('Roller getirilirken bir hata oluştu:', error);
-            message.channel.send('Rolleri gösterirken bir hata oluştu.');
-        });
-    }
+            roleChunks.forEach((chunk, index) => {
+                mainEmbed.addFields({
+                    name: `Rol Listesi ${roleChunks.length > 1 ? `(${index + 1}/${roleChunks.length})` : ''}`,
+                    value: chunk
+                });
+            });
+
+            mainEmbed.setTimestamp()
+                .setFooter({ text: `${author.tag}`, iconURL: author.displayAvatarURL({ dynamic: true }) });
+
+            await (isSlash ? interactionOrMessage.reply({ embeds: [mainEmbed] }) : interactionOrMessage.reply({ embeds: [mainEmbed] }));
+
+        } catch (error) {
+            console.error('Roller listelenirken bir hata oluştu:', error);
+            const errorMessage = 'Roller listelenirken bir hata oluştu.';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : interactionOrMessage.reply(errorMessage);
+        }
+    }
 };
