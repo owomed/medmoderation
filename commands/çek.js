@@ -1,32 +1,106 @@
-const Discord = require("discord.js"),
-    client = new Discord.Client();
-require('discord-reply');
-const ms = require("ms");
-const db = require("quick.db");
-const id = require('../Settings/idler.json')
-const ayar = require('../Settings/config.json')
-// parsher youtube
-module.exports = {
-    name: 'çek',
-    aliases: [],
-    async execute(client, message, args) {
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require('discord.js');
 
-        let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!üye) return message.reply("`Çekebilmek için bir üye belirtmelisin!`").then(x => x.delete({ timeout: 3000 }));
-        if (!message.member.voice.channel || !üye.voice.channel || message.member.voice.channelID == üye.voice.channelID) return message.reply('`Etiketlenen üye veya sen seste bulunmamaktasın!`').then(x => x.delete({ timeout: 5000 }));
-        if (message.member.hasPermission("ADMINISTRATOR")) { await üye.voice.setChannel(message.member.voice.channelID), message.reply('`Üye başarılı bir şekilde bulunduğun odaya çekildi.`').then(x => x.delete({ timeout: 7000 }), message.react(id.Emojiler.başarılıemojiid)); } else {
-            const reactionFilter = (reaction, user) => { return ['✅'].includes(reaction.emoji.name) && user.id === üye.id };
-            message.channel.send(new Discord.MessageEmbed().setDescription(`${üye}, ${message.author} seni yanına çekmek istiyor. Gitmek istiyor musun?`).setFooter('Onaylamak için 15 saniyen var.')).then(async msj => {
-                await msj.react('✅');
-                message.channel.send(`${üye}`).then(x => x.delete())
-                msj.awaitReactions(reactionFilter, { max: 1, time: 15 * 1000, error: ['time'] }).then(c => {
-                    let onay = c.first();
-                    if (onay) {
-                        üye.voice.setChannel(message.member.voice.channelID);
-                        msj.delete(), message.reply('`Üye başarılı bir şekilde bulunduğun odaya çekildi.`').then(x => x.delete({ timeout: 7000 }), message.react(id.Emojiler.başarılıemojiid));
-                    };
-                });
-            });
-        }
-    }
-}
+module.exports = {
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('çek')
+        .setDescription('Bir üyeyi bulunduğunuz sesli kanala çekmek için istek gönderir.')
+        .addUserOption(option =>
+            option.setName('kullanıcı')
+                .setDescription('Yanınıza çekmek istediğiniz kişi.')
+                .setRequired(true)),
+
+    // Prefix komut bilgisi
+    name: 'çek',
+    aliases: ['çek'],
+
+    async execute(interactionOrMessage, args) {
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
+        const guild = interactionOrMessage.guild;
+        const member = interactionOrMessage.member;
+
+        let targetMember;
+        if (isSlash) {
+            targetMember = interactionOrMessage.options.getMember('kullanıcı');
+        } else {
+            targetMember = interactionOrMessage.mentions.members.first() || guild.members.cache.get(args[0]);
+        }
+
+        // Ses kanalı kontrolleri
+        if (!member.voice.channel || !targetMember || !targetMember.voice.channel || member.voice.channel.id === targetMember.voice.channel.id) {
+            const replyMessage = '`Etiketlenen üye veya sen bir ses kanalında değilsin ya da aynı kanaldasınız!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 5000));
+        }
+
+        try {
+            // Yüksek yetkili ise direkt çekme
+            if (member.permissions.has(PermissionsBitField.Flags.Administrator) || member.voice.channel.permissionsFor(member).has(PermissionsBitField.Flags.MoveMembers)) {
+                await targetMember.voice.setChannel(member.voice.channel);
+                const successEmbed = new EmbedBuilder()
+                    .setColor('#00FF00')
+                    .setDescription(`${targetMember} kullanıcısı başarıyla bulunduğun odaya çekildi.`);
+                
+                return await interactionOrMessage.reply({ embeds: [successEmbed] });
+            }
+
+            // Yüksek yetkisi yoksa onay isteme
+            const acceptButton = new ButtonBuilder()
+                .setCustomId('pull_accept')
+                .setLabel('Kabul Et')
+                .setStyle(ButtonStyle.Success);
+
+            const declineButton = new ButtonBuilder()
+                .setCustomId('pull_decline')
+                .setLabel('Reddet')
+                .setStyle(ButtonStyle.Danger);
+
+            const row = new ActionRowBuilder()
+                .addComponents(acceptButton, declineButton);
+
+            const confirmationEmbed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setDescription(`${targetMember}, ${author} seni yanına çekmek istiyor. Gitmek ister misin?`);
+
+            const sentMessage = await interactionOrMessage.reply({ 
+                content: `${targetMember}`, 
+                embeds: [confirmationEmbed], 
+                components: [row] 
+            });
+
+            const collector = sentMessage.createMessageComponentCollector({ filter: i => i.user.id === targetMember.id, time: 15_000, max: 1 });
+
+            collector.on('collect', async i => {
+                if (i.customId === 'pull_accept') {
+                    await targetMember.voice.setChannel(member.voice.channel);
+                    const finalEmbed = new EmbedBuilder()
+                        .setColor('#00FF00')
+                        .setDescription(`İstek onaylandı! ${targetMember} kullanıcısı ${member} tarafından çekildi.`);
+                    await i.update({ embeds: [finalEmbed], components: [] });
+                } else if (i.customId === 'pull_decline') {
+                    const finalEmbed = new EmbedBuilder()
+                        .setColor('#FF0000')
+                        .setDescription(`İstek reddedildi. ${targetMember} kullanıcısı ${member} tarafından çekilmedi.`);
+                    await i.update({ embeds: [finalEmbed], components: [] });
+                }
+            });
+
+            collector.on('end', async collected => {
+                if (collected.size === 0) {
+                    const timeoutEmbed = new EmbedBuilder()
+                        .setColor('#FFD700')
+                        .setDescription(`İşlem zaman aşımına uğradı. ${targetMember} kullanıcısı yanıt vermedi.`);
+                    await sentMessage.edit({ embeds: [timeoutEmbed], components: [] });
+                }
+            });
+        } catch (error) {
+            console.error('Çekme işlemi sırasında bir hata oluştu:', error);
+            const errorMessage = '`Çekme işlemi sırasında bir hata oluştu.`';
+            isSlash
+                ? await interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : await interactionOrMessage.reply(errorMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+    }
+};
