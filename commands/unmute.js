@@ -1,24 +1,98 @@
-const Discord = require("discord.js"),
-    client = new Discord.Client();
-require('discord-reply');
-const db = require("quick.db");
-const id = require('../Settings/idler.json')
-const ayar = require('../Settings/config.json')
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
 
 module.exports = {
-    name: 'unmute',
-    aliases: [],
-    async execute(client, message, args) {
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('unmute')
+        .setDescription('Bir kullanıcının metin kanallarındaki susturmasını kaldırır.')
+        .addUserOption(option =>
+            option.setName('kullanıcı')
+                .setDescription('Susturması kaldırılacak kullanıcı.')
+                .setRequired(true)),
+    
+    // Prefix komut bilgisi
+    name: 'unmute',
+    aliases: ['susturma-kaldır', 'susturmakaldır'],
 
-        if (!message.member.hasPermission('MANAGE_ROLES') && !message.member.roles.cache.get(id.Mute.muteyetkiliid) && message.author.id !== ayar.sahip) return message.lineReply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
+    async execute(interactionOrMessage, args) {
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
+        const guild = interactionOrMessage.guild;
 
-        let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!üye) return message.reply('`Metin kanallarından susturmayı kaldırmak için üye`').then(x => x.delete({ timeout: 3000 }));
-        if (!üye.roles.cache.get(id.Mute.muterolid)) return message.reply('`Etiketlenen üyenin metin kanallarında susturulması bulunmamaktadır!`').then(x => x.delete({ timeout: 3000 }));
-        if (message.member.roles.highest.position <= üye.roles.highest.position) return message.reply('`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`').then(x => x.delete({ timeout: 3000 }))
+        let targetMember;
+        if (isSlash) {
+            targetMember = interactionOrMessage.options.getMember('kullanıcı');
+        } else {
+            targetMember = interactionOrMessage.mentions.members.first() || guild.members.cache.get(args[0]);
+        }
 
-        client.channels.cache.get(id.Mute.mutelogkanalid).send(new Discord.MessageEmbed().setColor('#f4a460').setDescription(`${üye}\`(${üye.id})\` adlı üye, <@${message.author.id}>\`(${message.author.id})\` üyesi tarafından \`(${new Date().toTurkishFormatDate()})\` zamanında metin kanallarında ki susturulması kaldırıldı.`))
+        // Yetki kontrolü
+        const muteYetkilisiRole = id.Mute.muteyetkiliid;
+        if (!interactionOrMessage.member.roles.cache.has(muteYetkilisiRole) && !interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.ManageRoles) && author.id !== ayar.sahip) {
+            const replyMessage = '`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-        üye.roles.remove(id.Mute.muterolid), message.lineReply('`Etiketlenen üyenin metin kanallarında ki susturulması kaldırıldı!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarılıemojiid))
-    }
-}
+        // Kullanıcı ve argüman kontrolü
+        if (!targetMember) {
+            const replyMessage = '`Metin kanallarından susturmayı kaldırmak için bir üye belirtmelisin!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+
+        const muteRoleId = id.Mute.muterolid;
+        if (!targetMember.roles.cache.has(muteRoleId)) {
+            const replyMessage = '`Etiketlenen üyenin metin kanallarında susturulması bulunmamaktadır!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+
+        if (interactionOrMessage.member.roles.highest.position <= targetMember.roles.highest.position) {
+            const replyMessage = '`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+
+        try {
+            await targetMember.roles.remove(muteRoleId, 'Susturma yetkili tarafından kaldırıldı.');
+
+            const successEmbed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Susturma Kaldırıldı')
+                .setDescription(`${targetMember} kullanıcısının metin kanallarındaki susturulması başarıyla kaldırıldı.`);
+            
+            isSlash
+                ? await interactionOrMessage.reply({ embeds: [successEmbed] })
+                : await interactionOrMessage.reply({ embeds: [successEmbed] }).then(x => setTimeout(() => x.delete(), 9000));
+
+            await interactionOrMessage.react('✅');
+
+            const muteLogChannel = guild.channels.cache.get(id.Mute.mutelogkanalid);
+            if (muteLogChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setColor('#f4a460')
+                    .setTitle('Susturma Kaldırıldı')
+                    .addFields(
+                        { name: 'Kullanıcı', value: `${targetMember} (\`${targetMember.id}\`)`, inline: true },
+                        { name: 'Yetkili', value: `${author} (\`${author.id}\`)`, inline: true }
+                    )
+                    .setTimestamp();
+                muteLogChannel.send({ embeds: [logEmbed] });
+            }
+
+        } catch (error) {
+            console.error('Unmute işlemi sırasında bir hata oluştu:', error);
+            const errorMessage = '`Susturma kaldırılırken bir hata oluştu.`';
+            isSlash
+                ? await interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : await interactionOrMessage.reply(errorMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+    }
+};
