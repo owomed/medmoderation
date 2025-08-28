@@ -1,39 +1,128 @@
-const Discord = require("discord.js"),
-    client = new Discord.Client();
-require('discord-reply');
-const db = require("quick.db");
-const id = require('../Settings/idler.json')
-const ayar = require('../Settings/config.json')
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
 
 module.exports = {
-    name: 'rol',
-    aliases: [],
-    async execute(client, message, args) {
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('rol')
+        .setDescription('Belirtilen üyeye rol verir veya alır.')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('ver')
+                .setDescription('Belirtilen üyeye rol verir.')
+                .addUserOption(option =>
+                    option.setName('kullanıcı')
+                        .setDescription('Rol verilecek kullanıcı.')
+                        .setRequired(true))
+                .addRoleOption(option =>
+                    option.setName('rol')
+                        .setDescription('Verilecek rol.')
+                        .setRequired(true)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('al')
+                .setDescription('Belirtilen üyeden rol alır.')
+                .addUserOption(option =>
+                    option.setName('kullanıcı')
+                        .setDescription('Rolü alınacak kullanıcı.')
+                        .setRequired(true))
+                .addRoleOption(option =>
+                    option.setName('rol')
+                        .setDescription('Alınacak rol.')
+                        .setRequired(true))),
+    
+    // Prefix komut bilgisi
+    name: 'rol',
+    aliases: ['r'],
+    
+    async execute(interactionOrMessage, args) {
+        let isSlash = interactionOrMessage.isCommand?.();
+        let user, role, action, author, guild;
 
-        if (!message.member.hasPermission('MANAGE_CHANNELS') && message.author.id !== ayar.sahip) return message.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
-        let üye = message.guild.member(message.mentions.users.first()) || message.guild.members.cache.get(args[1]);
-        let rol = message.mentions.roles.first() || message.guild.roles.cache.get(args[2]);
+        if (isSlash) {
+            action = interactionOrMessage.options.getSubcommand();
+            user = interactionOrMessage.options.getMember('kullanıcı');
+            role = interactionOrMessage.options.getRole('rol');
+            author = interactionOrMessage.user;
+            guild = interactionOrMessage.guild;
+        } else {
+            action = args[0];
+            user = interactionOrMessage.mentions.members.first() || interactionOrMessage.guild.members.cache.get(args[1]);
+            role = interactionOrMessage.mentions.roles.first() || interactionOrMessage.guild.roles.cache.get(args[2]);
+            author = interactionOrMessage.author;
+            guild = interactionOrMessage.guild;
+        }
 
-        if (!üye || !rol) return message.reply('`Lütfen geçerli bir üye ve rol belirtin!`').then(x => x.delete({ timeout: 3000 }));
+        const yetkiliRolleri = id.Roles.roleyetkiliid; // Ayarlar dosyasındaki rol ID'sini buraya ekle
+        const requesterMember = await guild.members.fetch(author.id);
 
-        if (message.member.roles.highest.position <= üye.roles.highest.position) return message.lineReply('`Etiketlediğin üye veya rol senden üst veya senle aynı pozisyonda!`').then(x => x.delete({ timeout: 3000 }));
+        // Yetki Kontrolü (Sadece Rol ve Sahip)
+        if (!requesterMember.roles.cache.some(r => yetkiliRolleri.includes(r.id)) && author.id !== ayar.sahip) {
+            const replyMessage = '`Bu komudu kullanmak için gerekli yetkili role sahip değilsin!`';
+            return isSlash
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-        if (args[0] === "al") {
-            if (!üye.roles.cache.has(rol.id)) return message.lineReply('`Etiketlenen üyede etiketlenen rol bulunmamaktadır!`').then(x => x.delete({ timeout: 3000 }));
-            üye.roles.remove(rol).then(() => {
-                message.reply('`Başarıyla etiketlenen üyeden rolü aldım.`').then(x => x.delete({ timeout: 7 * 1000 }), message.react(id.Emojiler.başarılıemojiid));
-            });
-            return;
-        };
+        // Argüman ve pozisyon kontrolü
+        if (!user || !role || (action !== 'ver' && action !== 'al')) {
+            const replyMessage = '`Lütfen geçerli bir işlem (ver/al), üye ve rol belirtin!`';
+            return isSlash
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+        
+        if (requesterMember.roles.highest.position <= user.roles.highest.position) {
+            const replyMessage = '`Etiketlediğin üye senden üst veya senle aynı pozisyonda!`';
+            return isSlash
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-        if (args[0] === "ver") {
-            if (üye.roles.cache.has(rol.id)) return message.lineReply('`Etiketlenen üyede etiketlenen rol bulunmaktadır!`').then(x => x.delete({ timeout: 3000 }));
-            üye.roles.add(rol).then(() => {
-                message.reply('`Başarıyla etiketlenen üyeye rol verdim.`').then(x => x.delete({ timeout: 7 * 1000 }), message.react(id.Emojiler.başarılıemojiid));
-            });
-            return;
-        };
+        // Botun pozisyon kontrolü
+        const botMember = guild.members.me;
+        if (botMember.roles.highest.position <= role.position) {
+            const replyMessage = '`Botun bu role işlem yapabilmesi için senden üstte olması gerekir!`';
+            return isSlash
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-        message.reply('`Ver veya al argümanlarını kullanmalısın!`').then(x => x.delete({ timeout: 3000 }));
-    }
-}
+        try {
+            if (action === "ver") {
+                if (user.roles.cache.has(role.id)) {
+                    const replyMessage = '`Etiketlenen üyede bu rol zaten bulunuyor!`';
+                    return isSlash
+                        ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                        : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+                }
+                await user.roles.add(role.id);
+                const successMessage = `\`${user.user.tag}\` kişisine başarıyla \`${role.name}\` rolünü verdim.`;
+                return isSlash
+                    ? interactionOrMessage.reply({ content: successMessage })
+                    : interactionOrMessage.reply(successMessage);
+            }
+            
+            if (action === "al") {
+                if (!user.roles.cache.has(role.id)) {
+                    const replyMessage = '`Etiketlenen üyede bu rol bulunmamaktadır!`';
+                    return isSlash
+                        ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                        : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+                }
+                await user.roles.remove(role.id);
+                const successMessage = `\`${user.user.tag}\` kişisinden başarıyla \`${role.name}\` rolünü aldım.`;
+                return isSlash
+                    ? interactionOrMessage.reply({ content: successMessage })
+                    : interactionOrMessage.reply(successMessage);
+            }
+        } catch (error) {
+            console.error('Rol işlemi sırasında bir hata oluştu:', error);
+            const errorMessage = '`Rol işlemi sırasında bir hata oluştu.`';
+            return isSlash
+                ? interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : interactionOrMessage.reply(errorMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+    }
+};
