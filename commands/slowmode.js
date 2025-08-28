@@ -1,53 +1,78 @@
-const Discord = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
 
 module.exports = {
-    name: 'slowmode',
-    aliases: ['yavaşmod'],
-    description: 'Kanalın yavaş mod süresini ayarlar.',
-    async execute(client, message, args) {
-        try {
-            const allowedRoles = [
-                '1236294590626267197',
-                '1236314485547860069',
-                '1236317902295138304',
-                '1188389290292551740',
-                '1216094391060529393'
-            ]; 
+    data: new SlashCommandBuilder()
+        .setName('slowmode')
+        .setDescription('Kanalın yavaş mod süresini ayarlar.')
+        .addIntegerOption(option =>
+            option.setName('süre')
+                .setDescription('Yavaş mod süresi (saniye). 0 = kapatır.')
+                .setRequired(true)
+                .setMinValue(0)
+                .setMaxValue(21600)),
 
-            const hasPermission = message.member.roles.cache.some(role => allowedRoles.includes(role.id));
-            if (!hasPermission) {
-                const embed = new Discord.MessageEmbed()
-                    .setColor('#FF0000')
-                    .setTitle('Yetkisiz Kullanım')
-                    .setDescription('Bu komutu kullanma izniniz yok. <a:med_hayir:1240942589977559081>')
-                    .setTimestamp();
-                return message.channel.send(embed);
-            }
+    name: 'slowmode',
+    aliases: ['yavaşmod'],
 
-            const duration = parseInt(args[0], 10);
-            if (isNaN(duration) || duration < 0 || duration > 21600) {
-                const embed = new Discord.MessageEmbed()
-                    .setColor('#FF0000')
-                    .setTitle('Hata')
-                    .setDescription('Geçerli bir süre belirtmelisiniz (0-21600 saniye arasında). <:uyari:1240750965489930290>')
-                    .setTimestamp();
-                return message.channel.send(embed);
-            }
+    async execute(interactionOrMessage) {
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
+        const channel = interactionOrMessage.channel;
+        
+        let duration;
+        if (isSlash) {
+            duration = interactionOrMessage.options.getInteger('süre');
+        } else {
+            const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
+            duration = parseInt(args[1], 10);
+        }
 
-            await message.channel.setRateLimitPerUser(duration, 'Yavaş mod ayarlandı');
+        // Yetki kontrolü (hem rol hem de sunucu izni)
+        const modRole = id.Roles.modYetkilisi;
+        if (!interactionOrMessage.member.roles.cache.has(modRole) && !interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.Administrator) && author.id !== ayar.sahip) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Yetkisiz Kullanım')
+                .setDescription('`Bu komutu kullanmak için gerekli izinlere sahip değilsin!`');
+            return isSlash 
+                ? interactionOrMessage.reply({ embeds: [embed], ephemeral: true })
+                : interactionOrMessage.reply({ embeds: [embed] });
+        }
 
-            const successEmbed = new Discord.MessageEmbed()
-                .setColor('#00FF00')
-                .setTitle('Yavaş Mod Ayarlandı')
-                .setDescription(`Kanalın yavaş mod süresi **${duration}** saniye olarak ayarlandı. <a:med_verify_owo:1235316609632043008>`)
-                .setTimestamp();
+        if (isNaN(duration) || duration < 0 || duration > 21600) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Hatalı Giriş')
+                .setDescription('Lütfen 0 ile 21600 arasında geçerli bir süre girin.');
+            return isSlash
+                ? interactionOrMessage.reply({ embeds: [embed], ephemeral: true })
+                : interactionOrMessage.reply({ embeds: [embed] });
+        }
 
-            await message.channel.send(successEmbed);
-            
-            await message.react('⏲️');
-        } catch (error) {
-            console.error('Yavaş mod ayarlama hatası:', error);
-            message.reply('Yavaş mod ayarlanırken bir hata oluştu.');
-        }
-    },
+        try {
+            await channel.setRateLimitPerUser(duration, 'Yavaş mod ayarlandı');
+
+            const successEmbed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Yavaş Mod Ayarlandı')
+                .setDescription(`Kanalın yavaş mod süresi **${duration}** saniye olarak ayarlandı.`);
+
+            if (isSlash) {
+                await interactionOrMessage.reply({ embeds: [successEmbed] });
+            } else {
+                await interactionOrMessage.reply({ embeds: [successEmbed] });
+            }
+            
+            await interactionOrMessage.react('⏲️');
+
+        } catch (error) {
+            console.error('Yavaş mod ayarlanırken bir hata oluştu:', error);
+            const errorMessage = 'Yavaş mod ayarlanırken bir hata oluştu.';
+            isSlash
+                ? interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : interactionOrMessage.reply(errorMessage);
+        }
+    },
 };
