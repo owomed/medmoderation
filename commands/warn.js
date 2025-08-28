@@ -1,27 +1,113 @@
-const Discord = require("discord.js"),
-    client = new Discord.Client();
-require('discord-reply');
-const db = require("quick.db");
-const id = require('../Settings/idler.json')
-const ayar = require('../Settings/config.json')
-// parsher youtube
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const db = require('quick.db');
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
+
 module.exports = {
-    name: 'warn',
-    aliases: ['uyar'],
-    async execute(client, message, args) {
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('warn')
+        .setDescription('Bir kullanıcıyı uyarır ve siciline kaydeder.')
+        .addUserOption(option =>
+            option.setName('kullanıcı')
+                .setDescription('Uyarılacak kullanıcı.')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('sebep')
+                .setDescription('Uyarı sebebi.')
+                .setRequired(true)),
 
-        if (!message.member.hasPermission('ADMINISTRATOR') && !message.member.roles.cache.get(id.Warn.warnyetkiliid) && message.author.id !== ayar.sahip) return message.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
+    // Prefix komut bilgisi
+    name: 'warn',
+    aliases: ['uyar'],
 
-        let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        let sebep = args.slice(1).join(' ');
+    async execute(interactionOrMessage, args) {
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
+        const guild = interactionOrMessage.guild;
 
-        if (!üye || !sebep) return message.reply('`Uyarmak için üye ve sebep belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
-        if (message.member.roles.highest.position <= üye.roles.highest.position) return message.reply('`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`').then(x => x.delete({ timeout: 3000 }))
+        let targetMember, reason;
+        if (isSlash) {
+            targetMember = interactionOrMessage.options.getMember('kullanıcı');
+            reason = interactionOrMessage.options.getString('sebep');
+        } else {
+            targetMember = interactionOrMessage.mentions.members.first() || guild.members.cache.get(args[0]);
+            reason = args.slice(1).join(' ');
+        }
 
-        db.push(`üye.${üye.id}.uyarılar`, { Yetkili: message.author.id, Tip: "WARN", Sebep: sebep, Zaman: Date.now() });
+        // Yetki kontrolü (hem rol hem de sunucu izni)
+        const warnYetkilisiRole = id.Warn.warnyetkiliid;
+        if (!interactionOrMessage.member.roles.cache.has(warnYetkilisiRole) && !interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.Administrator) && author.id !== ayar.sahip) {
+            const replyMessage = '`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+        
+        // Argüman ve kullanıcı kontrolleri
+        if (!targetMember || !reason) {
+            const replyMessage = '`Uyarmak için bir üye ve sebep belirtmelisin!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-        client.channels.cache.get(id.Warn.warnlogkanalid).send(new Discord.MessageEmbed().setColor('#00ff66').setDescription(`${üye}\`(${üye.id})\` adlı üye, <@${message.author.id}>\`(${message.author.id})\` üyesi tarafından \`(${new Date().toTurkishFormatDate()})\` zamanında \`(${sebep})\` sebebiyle uyardı.`))
+        if (interactionOrMessage.member.roles.highest.position <= targetMember.roles.highest.position) {
+            const replyMessage = '`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-        üye.send(`**${message.guild.name}** sunucusundan <@${message.author.id}> tarafından \`(${sebep})\` sebebiyle uyarıldın!`), message.channel.send('`Etiketlenen üye başarılı bir şekilde uyarıldı!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarılıemojiid))
-    }
-}
+        try {
+            await db.push(`üye.${targetMember.id}.uyarılar`, {
+                Yetkili: author.id,
+                Tip: "WARN",
+                Sebep: reason,
+                Zaman: Date.now()
+            });
+            
+            // Kullanıcıya DM gönderme
+            const dmEmbed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setTitle('Sunucu Uyarısı')
+                .setDescription(`**${message.guild.name}** sunucusundan ${author} tarafından \`${reason}\` sebebiyle uyarıldın!`)
+                .setTimestamp();
+            
+            targetMember.send({ embeds: [dmEmbed] }).catch(console.error);
+            
+            const successEmbed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Uyarı Başarılı')
+                .setDescription(`${targetMember} kullanıcısı başarılı bir şekilde uyarıldı!`);
+
+            isSlash
+                ? await interactionOrMessage.reply({ embeds: [successEmbed] })
+                : await interactionOrMessage.reply({ embeds: [successEmbed] }).then(x => setTimeout(() => x.delete(), 9000));
+            
+            await interactionOrMessage.react('⚠️');
+            
+            // Log kanalına gönderim
+            const warnLogChannel = guild.channels.cache.get(id.Warn.warnlogkanalid);
+            if (warnLogChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setColor('#00ff66')
+                    .setTitle('Kullanıcı Uyarıldı')
+                    .addFields(
+                        { name: 'Kullanıcı', value: `${targetMember} (\`${targetMember.id}\`)`, inline: true },
+                        { name: 'Yetkili', value: `${author} (\`${author.id}\`)`, inline: true },
+                        { name: 'Sebep', value: `\`${reason}\``, inline: false }
+                    )
+                    .setTimestamp();
+                warnLogChannel.send({ embeds: [logEmbed] });
+            }
+
+        } catch (error) {
+            console.error('Warn komutu hatası:', error);
+            const errorMessage = '`Kullanıcı uyarılırken bir hata oluştu.`';
+            isSlash
+                ? await interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : await interactionOrMessage.reply(errorMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+    }
+};
