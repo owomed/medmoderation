@@ -1,62 +1,105 @@
-const Discord = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const db = require('quick.db');
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
 
 module.exports = {
-    name: 'unjail',
-    aliases: [],
-    async execute(client, message, args) {
-        if (!message.member.hasPermission('MANAGE_ROLES') && !message.member.roles.cache.some(role => id.Jail.jailyetkiliid.includes(role.id)) && message.author.id !== ayar.sahip) {
-            return message.reply('`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`').then(x => x.delete({ timeout: 3000 }), message.react(id.Emojiler.başarısızemojiid));
-        }
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('unjail')
+        .setDescription('Bir kullanıcının jailini kaldırır.')
+        .addUserOption(option =>
+            option.setName('kullanıcı')
+                .setDescription('Jaili kaldırılacak kullanıcı.')
+                .setRequired(true)),
+    
+    // Prefix komut bilgisi
+    name: 'unjail',
+    aliases: ['jail-kaldır', 'jailkaldır'],
 
-        let üye = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!üye) {
-            return message.reply('`Jailden çıkarabilmek için bir üye belirtmelisin!`').then(x => x.delete({ timeout: 3000 }));
-        }
+    async execute(interactionOrMessage, args) {
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
+        const guild = interactionOrMessage.guild;
 
-        if (!üye.roles.cache.has(id.Jail.jailrolid)) {
-            return message.reply('`Etiketlenen üye jailde bulunmuyor!`').then(x => x.delete({ timeout: 3000 }));
-        }
+        let targetMember;
+        if (isSlash) {
+            targetMember = interactionOrMessage.options.getMember('kullanıcı');
+        } else {
+            targetMember = interactionOrMessage.mentions.members.first() || guild.members.cache.get(args[0]);
+        }
 
-        if (message.member.roles.highest.position <= üye.roles.highest.position) {
-            return message.reply('`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`').then(x => x.delete({ timeout: 3000 }));
-        }
+        // Yetki kontrolü
+        const jailYetkilisiRole = id.Jail.jailyetkiliid;
+        if (!interactionOrMessage.member.roles.cache.has(jailYetkilisiRole) && !interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.ManageRoles) && author.id !== ayar.sahip) {
+            const replyMessage = '`Bu komudu kullanmak için gerekli izinlere sahip değilsin!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+        
+        if (!targetMember) {
+            const replyMessage = '`Jailden çıkarabilmek için bir üye belirtmelisin!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-        try {
-            let roller = db.get(`üye.${üye.id}.roller`) || [];
-            await üye.roles.remove(id.Jail.jailrolid);
-            
-            if (roller.length > 0) {
-                for (let roleID of roller) {
-                    let role = message.guild.roles.cache.get(roleID);
-                    if (role) {
-                        await üye.roles.add(role).catch(err => console.error(`Rol eklenirken hata oluştu: ${roleID}`, err));
-                    } else {
-                        console.error(`Rol bulunamadı: ${roleID}`);
-                    }
-                }
-            }
+        if (!targetMember.roles.cache.has(id.Jail.jailrolid)) {
+            const replyMessage = '`Etiketlenen üye zaten jailde bulunmuyor!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+        
+        if (interactionOrMessage.member.roles.highest.position <= targetMember.roles.highest.position) {
+            const replyMessage = '`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`';
+            return isSlash 
+                ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true })
+                : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
 
-            db.delete(`üye.${üye.id}.roller`);
+        try {
+            const savedRoles = await db.get(`üye.${targetMember.id}.sroller`);
+            if (savedRoles && savedRoles.length > 0) {
+                await targetMember.roles.set(savedRoles).catch(err => console.error('Roller geri verilirken hata oluştu:', err));
+            } else {
+                // Eğer eski roller yoksa, sadece jail rolünü kaldır
+                await targetMember.roles.remove(id.Jail.jailrolid).catch(err => console.error('Jail rolü kaldırılırken hata oluştu:', err));
+            }
+            
+            db.delete(`üye.${targetMember.id}.sroller`);
+            
+            const successEmbed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Jail Kaldırıldı')
+                .setDescription(`${targetMember} kullanıcısının jailliği başarıyla kaldırıldı.`);
 
-            const embed = new Discord.MessageEmbed()
-                .setColor('#f4a460')
-                .setDescription(`${üye} (\`${üye.id}\`) adlı üye, <@${message.author.id}> (\`${message.author.id}\`) üyesi tarafından ${new Date().toLocaleString("tr-TR")} zamanında jailden çıkarıldı.`);
+            isSlash
+                ? await interactionOrMessage.reply({ embeds: [successEmbed] })
+                : await interactionOrMessage.reply({ embeds: [successEmbed] }).then(x => setTimeout(() => x.delete(), 9000));
+            
+            await interactionOrMessage.react('✅');
 
-            const logChannel = client.channels.cache.get(id.Jail.jaillogkanalid);
-            if (logChannel) {
-                logChannel.send(embed);
-            } else {
-                console.error('Log kanalı bulunamadı: ', id.Jail.jaillogkanalid);
-                throw new Error('Log kanalı bulunamadı.');
-            }
+            const logChannel = guild.channels.cache.get(id.Jail.jaillogkanalid);
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setColor('#f4a460')
+                    .setTitle('Jail Kaldırıldı')
+                    .addFields(
+                        { name: 'Kullanıcı', value: `${targetMember} (\`${targetMember.id}\`)`, inline: true },
+                        { name: 'Yetkili', value: `${author} (\`${author.id}\`)`, inline: true }
+                    )
+                    .setTimestamp();
+                logChannel.send({ embeds: [logEmbed] });
+            }
 
-            message.reply('`Etiketlenen üye başarıyla jailden çıkarıldı!`').then(x => x.delete({ timeout: 9000 }), message.react(id.Emojiler.başarılıemojiid));
-        } catch (error) {
-            console.error('Unjail işlemi sırasında bir hata oluştu:', error.message);
-            message.reply('`Unjail işlemi sırasında bir hata oluştu: ' + error.message + '`').then(x => x.delete({ timeout: 3000 }));
-        }
-    }
+        } catch (error) {
+            console.error('Unjail işlemi sırasında bir hata oluştu:', error);
+            const errorMessage = '`Unjail işlemi sırasında bir hata oluştu.`';
+            isSlash
+                ? await interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : await interactionOrMessage.reply(errorMessage).then(x => setTimeout(() => x.delete(), 3000));
+        }
+    }
 };
