@@ -1,9 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, ChannelType } = require('discord.js');
-const id = require('../Settings/idler.json'); // idler.json dosyanız
-const ayar = require('../Settings/config.json'); // config.json dosyanız
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
 
 module.exports = {
-    // Slash komutu verisi
     data: new SlashCommandBuilder()
         .setName('sil')
         .setDescription('Belirtilen sayıda mesajı siler.')
@@ -14,7 +13,6 @@ module.exports = {
                 .setMinValue(1)
                 .setMaxValue(500)),
 
-    // Prefix komut bilgisi
     name: 'sil',
     aliases: ['clear', 'temizle', 'delete'],
 
@@ -32,8 +30,9 @@ module.exports = {
             amount = parseInt(args[1], 10);
         }
 
-        // Yetki kontrolü (MANAGE_MESSAGES izni veya bot sahibi)
-        if (!interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.ManageMessages) && author.id !== ayar.sahip) {
+        // Yetki kontrolü (hem rol hem de sunucu izni)
+        const modRole = id.Roles.modYetkilisi; // Rol ID'nizi bu değişkene atayın
+        if (!interactionOrMessage.member.roles.cache.has(modRole) && !interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.Administrator) && author.id !== ayar.sahip) {
             const embed = new EmbedBuilder()
                 .setColor('#FF0000')
                 .setTitle('Yetkisiz Kullanım')
@@ -43,7 +42,6 @@ module.exports = {
                 : interactionOrMessage.reply({ embeds: [embed] }).then(msg => setTimeout(() => msg.delete(), 5000));
         }
 
-        // Miktar kontrolü
         if (isNaN(amount) || amount < 1 || amount > 500) {
             const embed = new EmbedBuilder()
                 .setColor('#FF0000')
@@ -54,7 +52,6 @@ module.exports = {
                 : interactionOrMessage.reply({ embeds: [embed] }).then(msg => setTimeout(() => msg.delete(), 5000));
         }
         
-        // Slash komutları için ön yanıt
         if (isSlash) {
             await interactionOrMessage.deferReply({ ephemeral: true });
         }
@@ -64,9 +61,9 @@ module.exports = {
             let remaining = amount;
             while (remaining > 0) {
                 const fetchedMessages = await channel.messages.fetch({ limit: Math.min(remaining, 100) });
-                const deletableMessages = fetchedMessages.filter(m => !m.pinned); // Sabitlenmiş mesajları silme
+                const deletableMessages = fetchedMessages.filter(m => !m.pinned);
                 
-                if (deletableMessages.size === 0) break; // Silinecek mesaj kalmadıysa döngüyü sonlandır
+                if (deletableMessages.size === 0) break;
                 
                 const deleted = await channel.bulkDelete(deletableMessages, true);
                 deletedMessagesCount += deleted.size;
@@ -82,4 +79,34 @@ module.exports = {
 
             if (isSlash) {
                 await interactionOrMessage.editReply({ embeds: [embed] });
-                setTimeout(() => interactionOrMessage.deleteReply(), 50
+                setTimeout(() => interactionOrMessage.deleteReply(), 5000);
+            } else {
+                await interactionOrMessage.reply({ embeds: [embed] }).then(msg => setTimeout(() => msg.delete(), 5000));
+            }
+            
+            const logChannel = guild.channels.cache.get(id.LogChannels.modlogkanali);
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setColor('#00FF00')
+                    .setTitle('Mesajlar Silindi')
+                    .setDescription(`\`${deletedMessagesCount}\` adet mesaj silindi.`)
+                    .addFields(
+                        { name: 'Kanal', value: `${channel}`, inline: true },
+                        { name: 'Silen', value: `<@${author.id}>`, inline: true }
+                    )
+                    .setTimestamp();
+                logChannel.send({ embeds: [logEmbed] });
+            }
+
+        } catch (error) {
+            console.error('Mesajları silerken bir hata oluştu:', error);
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Hata')
+                .setDescription('Mesajlar silinirken bir hata oluştu.');
+            isSlash
+                ? await interactionOrMessage.editReply({ embeds: [embed] })
+                : await interactionOrMessage.reply({ embeds: [embed] }).then(msg => setTimeout(() => msg.delete(), 5000));
+        }
+    }
+};
