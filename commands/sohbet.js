@@ -1,71 +1,93 @@
-const Discord = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, ChannelType } = require('discord.js');
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
 
 module.exports = {
-    name: 'lock',
-    description: 'Komutun kullanıldığı kanalı kilitler veya kilidi açar.',
-    async execute(client, message, args) {
-        const allowedRoles = [
-            '1236314485547860069',
-            '1236317902295138304',
-            '1188389290292551740',
-            '1216094391060529393'
-        ]; // Komutu kullanma izni olan rol ID'leri
-        const logChannelId = '833691259222360165'; // Log kanalının ID'si
+    // Slash komutu verisi
+    data: new SlashCommandBuilder()
+        .setName('lock')
+        .setDescription('Kanalın mesaj gönderme iznini kilitler veya açar.')
+        .addChannelOption(option =>
+            option.setName('kanal')
+                .setDescription('Kilitlenecek veya kilidi açılacak kanal.')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(false)),
+    
+    // Prefix komut bilgisi
+    name: 'lock',
+    aliases: ['kilit', 'kilitle'],
+    description: 'Komutun kullanıldığı kanalı kilitler veya kilidi açar.',
 
-        const hasPermission = message.member.roles.cache.some(role => allowedRoles.includes(role.id));
-        if (!hasPermission) {
-            const embed = new Discord.MessageEmbed()
-                .setColor('#FF0000')
-                .setTitle('Yetkisiz Kullanım')
-                .setDescription('`Bu komutu kullanma izniniz yok.` <a:med_hayir:1240942589977559081>')
-                .setTimestamp();
-            return message.channel.send(embed);
-        }
+    async execute(interactionOrMessage) {
+        const isSlash = interactionOrMessage.isCommand?.();
+        const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
+        const guild = interactionOrMessage.guild;
 
-        const everyoneRole = message.guild.roles.everyone;
-        const currentChannel = message.channel;
+        let targetChannel = interactionOrMessage.channel;
+        if (isSlash) {
+            targetChannel = interactionOrMessage.options.getChannel('kanal') || interactionOrMessage.channel;
+        } else if (interactionOrMessage.mentions.channels.first()) {
+            targetChannel = interactionOrMessage.mentions.channels.first();
+        }
 
-        const isLocked = !currentChannel.permissionsFor(everyoneRole).has('SEND_MESSAGES');
+        // Yetki kontrolü (MANAGE_CHANNELS izni veya bot sahibi)
+        if (!interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.ManageChannels) && author.id !== ayar.sahip) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Yetkisiz Kullanım')
+                .setDescription('`Bu komutu kullanmak için gerekli izinlere sahip değilsin!`');
+            return isSlash 
+                ? interactionOrMessage.reply({ embeds: [embed], ephemeral: true })
+                : interactionOrMessage.reply({ embeds: [embed] });
+        }
+        
+        const everyoneRole = guild.roles.everyone;
 
-        try {
-            if (isLocked) {
-                await currentChannel.updateOverwrite(everyoneRole, { SEND_MESSAGES: true });
+        try {
+            const currentPerms = targetChannel.permissionsFor(everyoneRole).has(PermissionsBitField.Flags.SendMessages);
+            const newPerms = !currentPerms;
 
-                const embed = new Discord.MessageEmbed()
-                    .setColor('#00FF00')
-                    .setTitle('Kanal Kilidi Açıldı')
-                    .setDescription(`${currentChannel} kanalı başarıyla açıldı. <a:med_onay:1240943849795489812>`)
-                    .setTimestamp();
+            await targetChannel.permissionOverwrites.edit(everyoneRole, {
+                SendMessages: newPerms
+            });
+            
+            const action = newPerms ? 'açıldı' : 'kilitlendi';
+            const actionEmoji = newPerms ? '🔓' : '🔒';
+            const embedColor = newPerms ? '#00FF00' : '#FF0000';
+            const embedTitle = newPerms ? 'Kanal Kilidi Açıldı' : 'Kanal Kilitlendi';
 
-                message.channel.send(embed);
-                message.react('🔓');
+            const embed = new EmbedBuilder()
+                .setColor(embedColor)
+                .setTitle(embedTitle)
+                .setDescription(`${targetChannel} kanalı başarıyla ${action}.`);
+            
+            isSlash
+                ? await interactionOrMessage.reply({ embeds: [embed] })
+                : await interactionOrMessage.reply({ embeds: [embed] });
+            
+            await interactionOrMessage.react(actionEmoji);
 
-                // Log kanalına mesaj gönderme
-                const logChannel = message.guild.channels.cache.get(logChannelId);
-                if (logChannel) {
-                    logChannel.send(embed);
-                }
-            } else {
-                await currentChannel.updateOverwrite(everyoneRole, { SEND_MESSAGES: false });
+            // Log kanalına mesaj gönderme
+            const logChannel = guild.channels.cache.get(id.LogChannels.modlogkanali); // idler.json'dan çekiyoruz
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setColor(embedColor)
+                    .setTitle('Kanal Kilit Durumu Değişti')
+                    .addFields(
+                        { name: 'Kanal', value: `${targetChannel}`, inline: true },
+                        { name: 'Durum', value: newPerms ? 'Açıldı' : 'Kilitlendi', inline: true },
+                        { name: 'Yetkili', value: `<@${author.id}>`, inline: true }
+                    )
+                    .setTimestamp();
+                logChannel.send({ embeds: [logEmbed] });
+            }
 
-                const embed = new Discord.MessageEmbed()
-                    .setColor('#FF0000')
-                    .setTitle('Kanal Kilitlendi')
-                    .setDescription(`${currentChannel} kanalı başarıyla kilitlendi. <a:med_onay:1240943849795489812>`)
-                    .setTimestamp();
-
-                message.channel.send(embed);
-                message.react('🔒');
-
-                // Log kanalına mesaj gönderme
-                const logChannel = message.guild.channels.cache.get(logChannelId);
-                if (logChannel) {
-                    logChannel.send(embed);
-                }
-            }
-        } catch (error) {
-            console.error('Kanal kilitleme/kilidi açma hatası:', error);
-            message.reply('`Kanal kilitlenirken veya kilidi açılırken bir hata oluştu.`');
-        }
-    },
+        } catch (error) {
+            console.error('Kanal kilitleme/kilidi açma hatası:', error);
+            const errorMessage = '`Kanal kilitlenirken veya kilidi açılırken bir hata oluştu.`';
+            isSlash
+                ? interactionOrMessage.reply({ content: errorMessage, ephemeral: true })
+                : interactionOrMessage.reply(errorMessage);
+        }
+    },
 };
