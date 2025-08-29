@@ -1,8 +1,22 @@
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const id = require('../Settings/idler.json'); // idler.json'ı dahil edin
-const ayar = require('../Settings/config.json'); // config.json'ı dahil edin
+const id = require('../Settings/idler.json');
+const ayar = require('../Settings/config.json');
+
+// Dosya sistemi yerine veritabanı için enmap-sqlite kütüphanesi kullanılıyor
+const Enmap = require("enmap");
+const Sqlite = require("enmap-sqlite");
+
+const askidaDB = new Enmap({
+    name: "askida",
+    provider: new Sqlite({
+        persistent: true,
+        autoFetch: true,
+        fetchAll: false,
+        table: "askida"
+    }),
+    fetchAll: false,
+    autoFetch: true
+});
 
 const yetkiliRolleri = [
     "1189127683653783552", "1236282803675467776", "1236290869716455495",
@@ -14,31 +28,6 @@ const yetkiliRolleri = [
 ];
 
 const askidaRolID = "1267447176422752360";
-const askidaFilePath = path.resolve(__dirname, '..', 'askida.json');
-
-// JSON dosyasından veriyi okuma fonksiyonu
-function getAskidaData() {
-    if (!fs.existsSync(askidaFilePath)) {
-        return {};
-    }
-    try {
-        const data = fs.readFileSync(askidaFilePath, 'utf8');
-        // Boş dosya durumunda boş bir nesne döndür
-        if (!data.trim()) {
-            return {};
-        }
-        return JSON.parse(data);
-    } catch (e) {
-        console.error("Askıda verisi okunurken hata oluştu, dosya bozuk veya boş olabilir.", e);
-        // Hata durumunda boş bir nesne döndürerek çökme önlenir
-        return {};
-    }
-}
-
-// JSON dosyasına veriyi yazma fonksiyonu
-function saveAskidaData(data) {
-    fs.writeFileSync(askidaFilePath, JSON.stringify(data, null, 2));
-}
 
 module.exports = {
     // Slash komutu verisi
@@ -58,7 +47,6 @@ module.exports = {
     async execute(interactionOrMessage) {
         let member, author, channel, isSlash;
         
-        // Prefix ve Slash komut ayrımı
         isSlash = interactionOrMessage.isCommand?.();
         if (isSlash) {
             member = interactionOrMessage.options.getMember('kullanıcı');
@@ -71,11 +59,9 @@ module.exports = {
             channel = interactionOrMessage.channel;
         }
 
-        // Yetkili rol ID'si ve bot sahibi
         const yetkiliAlimRolID = id.YetkiliAlim?.yetkilialim;
         const botSahipID = ayar.sahip;
         
-        // --- Yetki Kontrolü ---
         const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
 
         if (!isAuthorized) {
@@ -83,23 +69,20 @@ module.exports = {
             return isSlash ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
 
-        // Kullanıcı geçerlilik kontrolü
         if (!member) {
             const replyMessage = '`Lütfen geçerli bir kullanıcı etiketleyin.`';
             return isSlash ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
         
-        const askidaData = getAskidaData();
         const memberId = member.id;
         
+        // Veritabanından veriyi doğrudan çek
+        const oncekiRoller = await askidaDB.get(memberId);
+        
         // --- Zaten askıya alınmışsa => geri iade et ---
-        if (askidaData[memberId]) {
-            const oncekiRoller = askidaData[memberId];
-            
-            // Eğer veriler kaybolmuşsa veya kullanıcı zaten askıda değilse
-            if (!oncekiRoller || !member.roles.cache.has(askidaRolID)) {
-                delete askidaData[memberId];
-                saveAskidaData(askidaData);
+        if (oncekiRoller) {
+            if (!member.roles.cache.has(askidaRolID)) {
+                askidaDB.delete(memberId);
                 return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanından kaydı silindi.`);
             }
 
@@ -107,8 +90,7 @@ module.exports = {
                 await member.roles.add(oncekiRoller).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
                 
-                delete askidaData[memberId];
-                saveAskidaData(askidaData);
+                askidaDB.delete(memberId);
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
                 return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
@@ -129,8 +111,8 @@ module.exports = {
             return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
         }
 
-        askidaData[memberId] = alinacakRoller;
-        saveAskidaData(askidaData);
+        // Veriyi veritabanına kaydet
+        askidaDB.set(memberId, alinacakRoller);
 
         try {
             await member.roles.remove(alinacakRoller).catch(() => {});
