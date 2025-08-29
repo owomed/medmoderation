@@ -44,6 +44,7 @@ module.exports = {
         }
 
         const yetkiliAlimRolID = id.YetkiliAlim?.yetkilialim;
+
         const botSahipID = ayar.sahip;
 
         const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
