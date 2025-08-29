@@ -116,3 +116,4 @@ module.exports = {
                 .setFooter({ text: `${author.tag} tarafından`, iconURL: author.displayAvatarURL({ dynamic: true }) });
 
             const logChannel = interactionOrMessage.client.channels.cache.get(id.Ban.banlogkanalid);
+}
