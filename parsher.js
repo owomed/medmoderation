@@ -26,7 +26,7 @@ const commandFiles = fs.readdirSync('./commands/').filter(file => file.endsWith(
 for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
     client.commands.set(command.name, command);
-    
+
     // Eğer komutun slash komut verisi varsa, bunu kaydet
     if (command.data) {
         slashCommands.push(command.data.toJSON());
@@ -34,15 +34,15 @@ for (const file of commandFiles) {
 }
 
 // Bot hazır olduğunda çalışacak kod
-client.once('ready', async () => {
+client.once('clientReady', async () => { // "ready" olayı "clientReady" olarak güncellendi
     console.log(`Bot ${client.user.tag} olarak aktif!`);
-    
+
     // Slash komutlarını kaydet
     const { REST } = require('@discordjs/rest');
     const { Routes } = require('discord-api-types/v9');
-    
-    const rest = new REST({ version: '9' }).setToken(process.env.TOKEN);
-    
+
+    const rest = new REST({ version: '9' }).setToken(process.env.DISCORD_TOKEN);
+
     try {
         await rest.put(
             Routes.applicationCommands(client.user.id),
@@ -60,15 +60,15 @@ client.once('ready', async () => {
 // Kalpleri değiştiren özel durum rotasyonu
 function setStatus() {
     const statuses = [
-        { name: 'OwO ❤ MED ile ilgileniyor', type: ActivityType.Playing },
-        { name: 'OwO 💗 MED ile ilgileniyor', type: ActivityType.Playing },
-        { name: 'OwO 💖 MED ile ilgileniyor', type: ActivityType.Playing }
+        { name: 'OwO ❤ MED ile ilgileniyor', type: ActivityType.Custom, state: 'OwO ❤ MED ile ilgileniyor' },
+        { name: 'OwO 💗 MED ile ilgileniyor', type: ActivityType.Custom, state: 'OwO 💗 MED ile ilgileniyor' },
+        { name: 'OwO 💖 MED ile ilgileniyor', type: ActivityType.Custom, state: 'OwO 💖 MED ile ilgileniyor' }
     ];
     let statusIndex = 0;
-    
+
     // Durumu 5 saniyede bir güncelleyin
     setInterval(() => {
-        client.user.setActivity(statuses[statusIndex].name, { type: statuses[statusIndex].type });
+        client.user.setActivity(statuses[statusIndex]);
         statusIndex = (statusIndex + 1) % statuses.length;
     }, 5000); 
 }
@@ -77,7 +77,7 @@ function setStatus() {
 client.on('messageCreate', async message => {
     try {
         if (!message.content.startsWith(prefix) || message.author.bot || message.channel.type === 'dm') return;
-        
+
         const args = message.content.slice(prefix.length).split(/ +/);
         const commandName = args.shift().toLowerCase();
         const command = client.commands.get(commandName) || client.commands.find(x => x.aliases && x.aliases.includes(commandName));
@@ -96,9 +96,9 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
 
     const command = client.commands.get(interaction.commandName);
-    
+
     if (!command) return;
-    
+
     try {
         await command.execute(interaction);
     } catch (error) {
@@ -191,4 +191,4 @@ app.listen(port, () => {
     console.log(`Sunucu ${port} portunda çalışıyor`);
 });
 
-client.login(process.env.TOKEN);
+client.login(process.env.DISCORD_TOKEN);
