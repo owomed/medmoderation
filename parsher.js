@@ -191,4 +191,42 @@ app.listen(port, () => {
     console.log(`Sunucu ${port} portunda çalışıyor`);
 });
 
+const { Sequelize } = require('sequelize');
+
+// Render'da ayarladığınız ortam değişkenini kullanır
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+    dialect: 'postgres',
+    dialectOptions: {
+        ssl: {
+            require: true,
+            rejectUnauthorized: false
+        }
+    },
+    logging: false
+});
+
+// Modeli tanımlayın
+const Askida = sequelize.define('Askida', {
+  memberId: {
+    type: Sequelize.STRING,
+    primaryKey: true,
+    allowNull: false,
+  },
+  roles: {
+    type: Sequelize.JSON,
+    allowNull: false,
+  },
+}, {
+    timestamps: false,
+    tableName: 'askida'
+});
+
+// Veritabanına bağlanın ve tabloyu senkronize edin
+sequelize.authenticate()
+    .then(() => console.log('Veritabanına başarıyla bağlandı.'))
+    .catch(err => console.error('Veritabanına bağlanırken hata oluştu:', err));
+
+sequelize.sync();
+
+
 client.login(process.env.DISCORD_TOKEN);
