@@ -1,3 +1,4 @@
+// askida.js dosyanızın tamamı
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
@@ -30,6 +31,8 @@ module.exports = {
     // Hem slash hem de prefix için çalışacak ana fonksiyon
     async execute(interactionOrMessage) {
         let member, author, channel, isSlash;
+        // İstemci objesini interaction'dan al
+        const client = interactionOrMessage.client;
 
         isSlash = interactionOrMessage.isCommand?.();
         if (isSlash) {
@@ -44,7 +47,6 @@ module.exports = {
         }
 
         const yetkiliAlimRolID = id.YetkiliAlim?.yetkilialim;
-
         const botSahipID = ayar.sahip;
 
         const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
@@ -62,14 +64,14 @@ module.exports = {
         const memberId = member.id;
 
         // Sequelize ile veritabanından veriyi çek
-        const askidaRecord = await interactionOrMessage.client.Askida.findByPk(memberId);
+        const askidaRecord = await client.Askida.findByPk(memberId);
 
         // --- Zaten askıya alınmışsa => geri iade et ---
         if (askidaRecord) {
             const oncekiRoller = askidaRecord.roles;
 
             if (!member.roles.cache.has(askidaRolID)) {
-                await askidaRecord.destroy(); // Kaydı sil
+                await askidaRecord.destroy();
                 return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanından kaydı silindi.`);
             }
 
@@ -77,7 +79,7 @@ module.exports = {
                 await member.roles.add(oncekiRoller).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
 
-                await askidaRecord.destroy(); // Kaydı sil
+                await askidaRecord.destroy();
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
                 return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
@@ -99,8 +101,7 @@ module.exports = {
         }
 
         try {
-            // Veriyi veritabanına kaydet
-            await interactionOrMessage.client.Askida.create({
+            await client.Askida.create({
                 memberId: memberId,
                 roles: alinacakRoller
             });
