@@ -2,22 +2,6 @@ const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
 
-// Dosya sistemi yerine veritabanı için enmap-sqlite kütüphanesi kullanılıyor
-const Enmap = require("enmap");
-const Sqlite = require("enmap-sqlite");
-
-const askidaDB = new Enmap({
-    name: "askida",
-    provider: new Sqlite({
-        persistent: true,
-        autoFetch: true,
-        fetchAll: false,
-        table: "askida"
-    }),
-    fetchAll: false,
-    autoFetch: true
-});
-
 const yetkiliRolleri = [
     "1189127683653783552", "1236282803675467776", "1236290869716455495",
     "833410743951949825", "1236297871020658751", "1238576058119487539",
@@ -46,7 +30,7 @@ module.exports = {
     // Hem slash hem de prefix için çalışacak ana fonksiyon
     async execute(interactionOrMessage) {
         let member, author, channel, isSlash;
-        
+
         isSlash = interactionOrMessage.isCommand?.();
         if (isSlash) {
             member = interactionOrMessage.options.getMember('kullanıcı');
@@ -61,7 +45,7 @@ module.exports = {
 
         const yetkiliAlimRolID = id.YetkiliAlim?.yetkilialim;
         const botSahipID = ayar.sahip;
-        
+
         const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
 
         if (!isAuthorized) {
@@ -73,24 +57,26 @@ module.exports = {
             const replyMessage = '`Lütfen geçerli bir kullanıcı etiketleyin.`';
             return isSlash ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
-        
+
         const memberId = member.id;
-        
-        // Veritabanından veriyi doğrudan çek
-        const oncekiRoller = await askidaDB.get(memberId);
-        
+
+        // Sequelize ile veritabanından veriyi çek
+        const askidaRecord = await interactionOrMessage.client.Askida.findByPk(memberId);
+
         // --- Zaten askıya alınmışsa => geri iade et ---
-        if (oncekiRoller) {
+        if (askidaRecord) {
+            const oncekiRoller = askidaRecord.roles;
+
             if (!member.roles.cache.has(askidaRolID)) {
-                askidaDB.delete(memberId);
+                await askidaRecord.destroy(); // Kaydı sil
                 return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanından kaydı silindi.`);
             }
 
             try {
                 await member.roles.add(oncekiRoller).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
-                
-                askidaDB.delete(memberId);
+
+                await askidaRecord.destroy(); // Kaydı sil
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
                 return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
@@ -100,7 +86,7 @@ module.exports = {
                 return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
             }
         }
-        
+
         // --- Yeni askıya alınıyorsa ---
         const alinacakRoller = member.roles.cache
             .filter(r => yetkiliRolleri.includes(r.id))
@@ -111,10 +97,13 @@ module.exports = {
             return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
         }
 
-        // Veriyi veritabanına kaydet
-        askidaDB.set(memberId, alinacakRoller);
-
         try {
+            // Veriyi veritabanına kaydet
+            await interactionOrMessage.client.Askida.create({
+                memberId: memberId,
+                roles: alinacakRoller
+            });
+
             await member.roles.remove(alinacakRoller).catch(() => {});
             await member.roles.add(askidaRolID).catch(() => {});
 
