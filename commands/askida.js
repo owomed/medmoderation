@@ -14,8 +14,6 @@ const yetkiliRolleri = [
 ];
 
 const askidaRolID = "1267447176422752360";
-
-// Veri dosyasının yolu
 const askidaFilePath = path.resolve(__dirname, '..', 'askida.json');
 
 // JSON dosyasından veriyi okuma fonksiyonu
@@ -23,8 +21,18 @@ function getAskidaData() {
     if (!fs.existsSync(askidaFilePath)) {
         return {};
     }
-    const data = fs.readFileSync(askidaFilePath, 'utf8');
-    return JSON.parse(data);
+    try {
+        const data = fs.readFileSync(askidaFilePath, 'utf8');
+        // Boş dosya durumunda boş bir nesne döndür
+        if (!data.trim()) {
+            return {};
+        }
+        return JSON.parse(data);
+    } catch (e) {
+        console.error("Askıda verisi okunurken hata oluştu, dosya bozuk veya boş olabilir.", e);
+        // Hata durumunda boş bir nesne döndürerek çökme önlenir
+        return {};
+    }
 }
 
 // JSON dosyasına veriyi yazma fonksiyonu
@@ -41,52 +49,47 @@ module.exports = {
             option.setName('kullanıcı')
                 .setDescription('Askıya alınacak veya askıdan çıkarılacak kullanıcı.')
                 .setRequired(true)),
-    
+
+    // Prefix komutu bilgisi
+    name: 'askıda',
+    aliases: ['askida'],
+
     // Hem slash hem de prefix için çalışacak ana fonksiyon
     async execute(interactionOrMessage) {
-        let member, author, channel;
-        const askidaData = getAskidaData();
-
-        // Yetkili rol ID'si
-        const yetkiliAlimRolID = id.YetkiliAlim.yetkilialim;
-        const botSahipID = ayar.sahip;
-
+        let member, author, channel, isSlash;
+        
         // Prefix ve Slash komut ayrımı
-        if (interactionOrMessage.isCommand?.()) {
-            // Slash komutu
+        isSlash = interactionOrMessage.isCommand?.();
+        if (isSlash) {
             member = interactionOrMessage.options.getMember('kullanıcı');
             author = interactionOrMessage.user;
             channel = interactionOrMessage.channel;
         } else {
-            // Prefix komutu
             const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
             member = interactionOrMessage.mentions.members.first() || interactionOrMessage.guild.members.cache.get(args[1]);
             author = interactionOrMessage.author;
             channel = interactionOrMessage.channel;
         }
 
+        // Yetkili rol ID'si ve bot sahibi
+        const yetkiliAlimRolID = id.YetkiliAlim?.yetkilialim;
+        const botSahipID = ayar.sahip;
+        
         // --- Yetki Kontrolü ---
         const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
 
         if (!isAuthorized) {
             const replyMessage = '`Bu komutu sadece bot sahibi veya yetkili alım rolüne sahip kişiler kullanabilir.`';
-            if (interactionOrMessage.isCommand?.()) {
-                return interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
-            } else {
-                return interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
-            }
+            return isSlash ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
 
         // Kullanıcı geçerlilik kontrolü
         if (!member) {
             const replyMessage = '`Lütfen geçerli bir kullanıcı etiketleyin.`';
-            if (interactionOrMessage.isCommand?.()) {
-                return interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
-            } else {
-                return interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
-            }
+            return isSlash ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
         
+        const askidaData = getAskidaData();
         const memberId = member.id;
         
         // --- Zaten askıya alınmışsa => geri iade et ---
@@ -108,21 +111,12 @@ module.exports = {
                 saveAskidaData(askidaData);
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
-                if (interactionOrMessage.isCommand?.()) {
-                    await interactionOrMessage.reply({ content: replyContent, ephemeral: false });
-                } else {
-                    await channel.send(replyContent);
-                }
+                return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
             } catch (error) {
                 console.error('Rolleri geri verirken bir hata oluştu:', error);
                 const replyContent = 'Rolleri geri verirken bir hata oluştu.';
-                if (interactionOrMessage.isCommand?.()) {
-                    await interactionOrMessage.reply({ content: replyContent, ephemeral: true });
-                } else {
-                    await channel.send(replyContent);
-                }
+                return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
             }
-            return;
         }
         
         // --- Yeni askıya alınıyorsa ---
@@ -132,11 +126,7 @@ module.exports = {
 
         if (alinacakRoller.length === 0) {
             const replyContent = "Bu kullanıcıda alınacak olan **`(kayıt edilecek)`** yetkili rolleri bulunamadı.";
-            if (interactionOrMessage.isCommand?.()) {
-                return interactionOrMessage.reply({ content: replyContent, ephemeral: true });
-            } else {
-                return channel.send(replyContent);
-            }
+            return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
         }
 
         askidaData[memberId] = alinacakRoller;
@@ -147,24 +137,11 @@ module.exports = {
             await member.roles.add(askidaRolID).catch(() => {});
 
             const replyContent = `${member} kullanıcısı askıya alındı. *\`Rolleri kaydedildi ve askıya özel rol verildi.\`*`;
-            if (interactionOrMessage.isCommand?.()) {
-                await interactionOrMessage.reply({ content: replyContent, ephemeral: false });
-            } else {
-                await channel.send(replyContent);
-            }
+            return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
         } catch (error) {
             console.error('Kullanıcıyı askıya alırken bir hata oluştu:', error);
             const replyContent = 'Kullanıcıyı askıya alırken bir hata oluştu.';
-            if (interactionOrMessage.isCommand?.()) {
-                await interactionOrMessage.reply({ content: replyContent, ephemeral: true });
-            } else {
-                await channel.send(replyContent);
-            }
+            return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
         }
     },
-
-    // Prefix komutu bilgisi
-    name: 'askıda',
-    description: 'Belirtilen kullanıcıyı askıya alır veya askıdan çıkarır.',
-    aliases: ['askida'],
 };
