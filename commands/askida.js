@@ -1,4 +1,3 @@
-// askida.js dosyanızın tamamı
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
@@ -15,7 +14,6 @@ const yetkiliRolleri = [
 const askidaRolID = "1267447176422752360";
 
 module.exports = {
-    // Slash komutu verisi
     data: new SlashCommandBuilder()
         .setName('askıda')
         .setDescription('Belirtilen kullanıcıyı askıya alır veya askıdan çıkarır.')
@@ -24,14 +22,11 @@ module.exports = {
                 .setDescription('Askıya alınacak veya askıdan çıkarılacak kullanıcı.')
                 .setRequired(true)),
 
-    // Prefix komutu bilgisi
     name: 'askıda',
     aliases: ['askida'],
 
-    // Hem slash hem de prefix için çalışacak ana fonksiyon
     async execute(interactionOrMessage) {
         let member, author, channel, isSlash;
-        // İstemci objesini interaction'dan al
         const client = interactionOrMessage.client;
 
         isSlash = interactionOrMessage.isCommand?.();
@@ -63,7 +58,6 @@ module.exports = {
 
         const memberId = member.id;
 
-        // Sequelize ile veritabanından veriyi çek
         const askidaRecord = await client.Askida.findByPk(memberId);
 
         // --- Zaten askıya alınmışsa => geri iade et ---
@@ -78,7 +72,7 @@ module.exports = {
             try {
                 await member.roles.add(oncekiRoller).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
-
+                
                 await askidaRecord.destroy();
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
