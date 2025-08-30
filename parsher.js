@@ -5,6 +5,7 @@ const { prefix } = require('./Settings/config.json');
 require('dotenv').config();
 require('./stayInVoice.js');
 const express = require('express');
+const { Sequelize, DataTypes } = require('sequelize'); // DataTypes eklenmeli
 
 // Bot istemcisini modern intentlerle başlatın
 const client = new Client({
@@ -34,10 +35,9 @@ for (const file of commandFiles) {
 }
 
 // Bot hazır olduğunda çalışacak kod
-client.once('clientReady', async () => { // "ready" olayı "clientReady" olarak güncellendi
+client.once('clientReady', async () => {
     console.log(`Bot ${client.user.tag} olarak aktif!`);
 
-    // Slash komutlarını kaydet
     const { REST } = require('@discordjs/rest');
     const { Routes } = require('discord-api-types/v9');
 
@@ -53,11 +53,9 @@ client.once('clientReady', async () => { // "ready" olayı "clientReady" olarak 
         console.error('Slash komutları kaydedilirken hata oluştu:', error);
     }
 
-    // İstediğiniz özel durumu ayarla
     setStatus();
 });
 
-// Kalpleri değiştiren özel durum rotasyonu
 function setStatus() {
     const statuses = [
         { name: 'OwO ❤ MED ile ilgileniyor', type: ActivityType.Custom, state: 'OwO ❤ MED ile ilgileniyor' },
@@ -66,11 +64,10 @@ function setStatus() {
     ];
     let statusIndex = 0;
 
-    // Durumu 5 saniyede bir güncelleyin
     setInterval(() => {
         client.user.setActivity(statuses[statusIndex]);
         statusIndex = (statusIndex + 1) % statuses.length;
-    }, 5000); 
+    }, 5000);
 }
 
 // Prefix komutlarını dinle
@@ -191,9 +188,6 @@ app.listen(port, () => {
     console.log(`Sunucu ${port} portunda çalışıyor`);
 });
 
-const { Sequelize } = require('sequelize');
-
-// Render'da ayarladığınız ortam değişkenini kullanır
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     dialectOptions: {
@@ -208,12 +202,12 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
 // Modeli tanımlayın
 const Askida = sequelize.define('Askida', {
   memberId: {
-    type: Sequelize.STRING,
+    type: DataTypes.STRING,
     primaryKey: true,
     allowNull: false,
   },
   roles: {
-    type: Sequelize.JSON,
+    type: DataTypes.JSONB,
     allowNull: false,
   },
 }, {
@@ -228,5 +222,7 @@ sequelize.authenticate()
 
 sequelize.sync();
 
+// DİKKAT: Sequelize modelini client objesine ekliyoruz.
+client.Askida = Askida;
 
 client.login(process.env.DISCORD_TOKEN);
