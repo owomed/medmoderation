@@ -66,7 +66,7 @@ module.exports = {
 
             if (!member.roles.cache.has(askidaRolID)) {
                 await askidaRecord.destroy();
-                return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanından kaydı silindi.`);
+                return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanında kayıt bulunamıyor.`);
             }
 
             try {
