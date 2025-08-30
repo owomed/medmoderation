@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
 
@@ -27,65 +27,68 @@ module.exports = {
     async execute(interactionOrMessage) {
         let member, author, channel, isSlash;
         const client = interactionOrMessage.client;
-
-        isSlash = interactionOrMessage.isCommand?.();
-        if (isSlash) {
-            member = interactionOrMessage.options.getMember('kullanıcı');
-            author = interactionOrMessage.user;
-            channel = interactionOrMessage.channel;
-        } else {
-            const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
-            member = interactionOrMessage.mentions.members.first() || interactionOrMessage.guild.members.cache.get(args[1]);
-            author = interactionOrMessage.author;
-            channel = interactionOrMessage.channel;
-        }
-
-        const yetkiliAlimRolID = id.YetkiliAlim?.yetkilialim;
-        const botSahipID = ayar.sahip;
-
-        const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
-
-        if (!isAuthorized) {
-            const replyMessage = '`Bu komutu sadece bot sahibi veya yetkili alım rolüne sahip kişiler kullanabilir.`';
-            return isSlash ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
-        }
-
-        if (!member) {
-            const replyMessage = '`Lütfen geçerli bir kullanıcı etiketleyin.`';
-            return isSlash ? interactionOrMessage.reply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
-        }
-
-        const memberId = member.id;
+        let replied = false;
 
         try {
+            if (interactionOrMessage.isCommand?.()) {
+                await interactionOrMessage.deferReply({ ephemeral: true });
+                replied = true;
+            }
+
+            isSlash = interactionOrMessage.isCommand?.();
+            if (isSlash) {
+                member = interactionOrMessage.options.getMember('kullanıcı');
+                author = interactionOrMessage.user;
+                channel = interactionOrMessage.channel;
+            } else {
+                const args = interactionOrMessage.content.slice(1).trim().split(/ +/);
+                member = interactionOrMessage.mentions.members.first() || interactionOrMessage.guild.members.cache.get(args[1]);
+                author = interactionOrMessage.author;
+                channel = interactionOrMessage.channel;
+            }
+
+            const yetkiliAlimRolID = id.YetkiliAlim?.yetkilialim;
+            const botSahipID = ayar.sahip;
+
+            const isAuthorized = author.id === botSahipID || interactionOrMessage.member.roles.cache.has(yetkiliAlimRolID);
+
+            if (!isAuthorized) {
+                const replyMessage = '`Bu komutu sadece bot sahibi veya yetkili alım rolüne sahip kişiler kullanabilir.`';
+                return replied ? interactionOrMessage.editReply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
+            }
+
+            if (!member) {
+                const replyMessage = '`Lütfen geçerli bir kullanıcı etiketleyin.`';
+                return replied ? interactionOrMessage.editReply({ content: replyMessage, ephemeral: true }) : interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
+            }
+
+            const memberId = member.id;
             const askidaRecord = await client.Askida.findByPk(memberId);
 
-            // Eğer kullanıcı zaten askıdaysa, rolleri geri ver ve kaydı sil
+            // Kullanıcı zaten askıdaysa
             if (askidaRecord) {
-                const oncekiRoller = askidaRecord.roles;
-
                 if (!member.roles.cache.has(askidaRolID)) {
                     await askidaRecord.destroy();
-                    const replyContent = `${member} kullanıcısı zaten askıda değil. Veri tabanında fazladan bir kayıt vardı ve silindi.`;
-                    return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
+                    const replyContent = `${member} kullanıcısı zaten askıda değil. Veri tabanındaki fazladan kayıt temizlendi.`;
+                    return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
                 }
 
-                await member.roles.add(oncekiRoller).catch(() => {});
+                await member.roles.add(askidaRecord.roles).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
                 await askidaRecord.destroy();
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
-                return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : channel.send(replyContent);
+                return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: false }) : channel.send(replyContent);
             }
 
-            // Eğer kullanıcı askıda değilse, yeni bir kayıt oluştur ve rolleri al
+            // Kullanıcı askıda değilse
             const alinacakRoller = member.roles.cache
                 .filter(r => yetkiliRolleri.includes(r.id))
                 .map(r => r.id);
 
             if (alinacakRoller.length === 0) {
                 const replyContent = "Bu kullanıcıda askıya alınacak yetkili rolleri bulunamadı.";
-                return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
+                return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
             }
 
             await client.Askida.create({
@@ -97,12 +100,12 @@ module.exports = {
             await member.roles.add(askidaRolID).catch(() => {});
 
             const replyContent = `${member} kullanıcısı askıya alındı. *\`Rolleri kaydedildi ve askıya özel rol verildi.\`*`;
-            return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : channel.send(replyContent);
+            return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: false }) : channel.send(replyContent);
 
         } catch (error) {
             console.error('Komut çalıştırılırken bir hata oluştu:', error);
             const replyContent = 'Komut çalıştırılırken beklenmedik bir hata oluştu. Bot geliştiricisine danışın.';
-            return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
+            return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: true }) : interactionOrMessage.reply({ content: replyContent, ephemeral: true });
         }
     },
 };
