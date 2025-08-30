@@ -58,43 +58,38 @@ module.exports = {
 
         const memberId = member.id;
 
-        const askidaRecord = await client.Askida.findByPk(memberId);
+        try {
+            // Sequelize ile veritabanından veriyi çek
+            const askidaRecord = await client.Askida.findByPk(memberId);
 
-        // --- Zaten askıya alınmışsa => geri iade et ---
-        if (askidaRecord) {
-            const oncekiRoller = askidaRecord.roles;
+            // --- Zaten askıya alınmışsa => geri iade et ---
+            if (askidaRecord) {
+                const oncekiRoller = askidaRecord.roles;
 
-            if (!member.roles.cache.has(askidaRolID)) {
-                await askidaRecord.destroy();
-                return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanında kayıt bulunamıyor.`);
-            }
+                if (!member.roles.cache.has(askidaRolID)) {
+                    await askidaRecord.destroy();
+                    return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanında kayıt bulunamıyor.`);
+                }
 
-            try {
                 await member.roles.add(oncekiRoller).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
-                
+
                 await askidaRecord.destroy();
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
                 return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
-            } catch (error) {
-                console.error('Rolleri geri verirken bir hata oluştu:', error);
-                const replyContent = 'Rolleri geri verirken bir hata oluştu.';
+            }
+
+            // --- Yeni askıya alınıyorsa ---
+            const alinacakRoller = member.roles.cache
+                .filter(r => yetkiliRolleri.includes(r.id))
+                .map(r => r.id);
+
+            if (alinacakRoller.length === 0) {
+                const replyContent = "Bu kullanıcıda alınacak olan **`(kayıt edilecek)`** yetkili rolleri bulunamadı.";
                 return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
             }
-        }
 
-        // --- Yeni askıya alınıyorsa ---
-        const alinacakRoller = member.roles.cache
-            .filter(r => yetkiliRolleri.includes(r.id))
-            .map(r => r.id);
-
-        if (alinacakRoller.length === 0) {
-            const replyContent = "Bu kullanıcıda alınacak olan **`(kayıt edilecek)`** yetkili rolleri bulunamadı.";
-            return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
-        }
-
-        try {
             await client.Askida.create({
                 memberId: memberId,
                 roles: alinacakRoller
@@ -105,9 +100,10 @@ module.exports = {
 
             const replyContent = `${member} kullanıcısı askıya alındı. *\`Rolleri kaydedildi ve askıya özel rol verildi.\`*`;
             return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
+
         } catch (error) {
-            console.error('Kullanıcıyı askıya alırken bir hata oluştu:', error);
-            const replyContent = 'Kullanıcıyı askıya alırken bir hata oluştu.';
+            console.error('Komut çalıştırılırken bir hata oluştu:', error);
+            const replyContent = 'Komut çalıştırılırken beklenmedik bir hata oluştu.';
             return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
         }
     },
