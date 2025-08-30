@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
 
@@ -21,7 +21,6 @@ module.exports = {
             option.setName('kullanıcı')
                 .setDescription('Askıya alınacak veya askıdan çıkarılacak kullanıcı.')
                 .setRequired(true)),
-
     name: 'askıda',
     aliases: ['askida'],
 
@@ -59,35 +58,34 @@ module.exports = {
         const memberId = member.id;
 
         try {
-            // Sequelize ile veritabanından veriyi çek
             const askidaRecord = await client.Askida.findByPk(memberId);
 
-            // --- Zaten askıya alınmışsa => geri iade et ---
+            // Eğer kullanıcı zaten askıdaysa, rolleri geri ver ve kaydı sil
             if (askidaRecord) {
                 const oncekiRoller = askidaRecord.roles;
 
                 if (!member.roles.cache.has(askidaRolID)) {
                     await askidaRecord.destroy();
-                    return channel.send(`${member} kullanıcısı zaten askıda değil. Veri tabanında kayıt bulunamıyor.`);
+                    const replyContent = `${member} kullanıcısı zaten askıda değil. Veri tabanında fazladan bir kayıt vardı ve silindi.`;
+                    return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
                 }
 
                 await member.roles.add(oncekiRoller).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
-
                 await askidaRecord.destroy();
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
-                return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
+                return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : channel.send(replyContent);
             }
 
-            // --- Yeni askıya alınıyorsa ---
+            // Eğer kullanıcı askıda değilse, yeni bir kayıt oluştur ve rolleri al
             const alinacakRoller = member.roles.cache
                 .filter(r => yetkiliRolleri.includes(r.id))
                 .map(r => r.id);
 
             if (alinacakRoller.length === 0) {
-                const replyContent = "Bu kullanıcıda alınacak olan **`(kayıt edilecek)`** yetkili rolleri bulunamadı.";
-                return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
+                const replyContent = "Bu kullanıcıda askıya alınacak yetkili rolleri bulunamadı.";
+                return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
             }
 
             await client.Askida.create({
@@ -99,12 +97,12 @@ module.exports = {
             await member.roles.add(askidaRolID).catch(() => {});
 
             const replyContent = `${member} kullanıcısı askıya alındı. *\`Rolleri kaydedildi ve askıya özel rol verildi.\`*`;
-            return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : await channel.send(replyContent);
+            return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: false }) : channel.send(replyContent);
 
         } catch (error) {
             console.error('Komut çalıştırılırken bir hata oluştu:', error);
-            const replyContent = 'Komut çalıştırılırken beklenmedik bir hata oluştu.';
-            return isSlash ? await interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : await channel.send(replyContent);
+            const replyContent = 'Komut çalıştırılırken beklenmedik bir hata oluştu. Bot geliştiricisine danışın.';
+            return isSlash ? interactionOrMessage.reply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
         }
     },
 };
