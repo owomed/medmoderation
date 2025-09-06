@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
-const id = require('../Settings/idler.json');
+const id = require('../Settings/idler.json'); // Bu dosya hâlâ diğer ID'ler için kullanılabilir.
 const ayar = require('../Settings/config.json');
 
 module.exports = {
@@ -21,6 +21,10 @@ module.exports = {
         const author = isSlash ? interactionOrMessage.user : interactionOrMessage.author;
         const guild = interactionOrMessage.guild;
         const channel = interactionOrMessage.channel;
+        
+        // Fotoğraftaki ID'ler buraya eklendi.
+        const allowedRoleId = '1236394142788091995'; // 'Komutu kullanma izni olan rol ID’si'
+        const logChannelId = '1237313793437204512'; // 'Log kanalının ID’si'
 
         let amount;
         if (isSlash) {
@@ -30,9 +34,8 @@ module.exports = {
             amount = parseInt(args[1], 10);
         }
 
-        // Yetki kontrolü (hem rol hem de sunucu izni)
-        const modRole = id.Roles.modYetkilisi;
-        if (!interactionOrMessage.member.roles.cache.has(modRole) && !interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.Administrator) && author.id !== ayar.sahip) {
+        // Yetki kontrolü güncellendi
+        if (!interactionOrMessage.member.roles.cache.has(allowedRoleId) && !interactionOrMessage.member.permissions.has(PermissionsBitField.Flags.Administrator) && author.id !== ayar.sahip) {
             const embed = new EmbedBuilder()
                 .setColor('#FF0000')
                 .setTitle('Yetkisiz Kullanım')
@@ -60,7 +63,6 @@ module.exports = {
         try {
             let remaining = amount;
             while (remaining > 0) {
-                // Mesajları 100'erli gruplar halinde çek
                 const fetchedMessages = await channel.messages.fetch({ limit: Math.min(remaining, 100) });
                 if (fetchedMessages.size === 0) break;
 
@@ -68,22 +70,17 @@ module.exports = {
                 if (deletableMessages.size === 0) break;
 
                 const now = Date.now();
-                const twoWeeksAgo = now - 1209600000; // 14 gün milisaniye cinsinden
+                const twoWeeksAgo = now - 1209600000;
 
-                // 14 günden yeni mesajları filtrele
                 const recentMessages = deletableMessages.filter(m => m.createdTimestamp > twoWeeksAgo);
-
-                // 14 günden eski mesajları filtrele
                 const oldMessages = deletableMessages.filter(m => m.createdTimestamp <= twoWeeksAgo);
 
-                // Yeni mesajları toplu olarak sil
                 if (recentMessages.size > 0) {
                     const deleted = await channel.bulkDelete(recentMessages, true);
                     deletedMessagesCount += deleted.size;
                     remaining -= deleted.size;
                 }
 
-                // Eski mesajları tek tek sil
                 for (const msg of oldMessages.values()) {
                     try {
                         await msg.delete();
@@ -94,7 +91,6 @@ module.exports = {
                     }
                 }
 
-                // Eğer hiç mesaj silinemezse döngüden çık
                 if (recentMessages.size === 0 && oldMessages.size === 0) break;
             }
 
@@ -111,7 +107,7 @@ module.exports = {
                 await interactionOrMessage.reply({ embeds: [embed] }).then(msg => setTimeout(() => msg.delete(), 5000));
             }
 
-            const logChannel = guild.channels.cache.get(id.LogChannels.modlogkanali);
+            const logChannel = guild.channels.cache.get(logChannelId);
             if (logChannel) {
                 const logEmbed = new EmbedBuilder()
                     .setColor('#00FF00')
