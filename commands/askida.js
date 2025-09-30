@@ -63,7 +63,7 @@ module.exports = {
             }
 
             const memberId = member.id;
-            const askidaRecord = await client.Askida.findByPk(memberId);
+            const askidaRecord = client.Askida.findOne({ memberId: memberId });
 
             // Kullanıcı zaten askıdaysa
             if (askidaRecord) {
