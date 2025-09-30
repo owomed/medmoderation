@@ -63,25 +63,30 @@ module.exports = {
             }
 
             const memberId = member.id;
-            const askidaRecord = client.Askida.findOne({ memberId: memberId });
+            // ⭐️ DÜZELTME 1: findOne çağrısı ASENKRON olmalı.
+            const askidaRecord = await client.Askida.findOne({ memberId: memberId });
 
-            // Kullanıcı zaten askıdaysa
+            // Kullanıcı zaten askıdaysa (Askıdan Çıkarma İşlemi)
             if (askidaRecord) {
                 if (!member.roles.cache.has(askidaRolID)) {
-                    await askidaRecord.destroy();
+                    // ⭐️ DÜZELTME 2: Sequelize'den Mongoose'a: destroy() yerine deleteOne()
+                    await askidaRecord.deleteOne(); 
                     const replyContent = `${member} kullanıcısı zaten askıda değil. Veri tabanındaki fazladan kayıt temizlendi.`;
                     return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
                 }
 
+                // Rolleri geri ver ve askı rolünü kaldır
                 await member.roles.add(askidaRecord.roles).catch(() => {});
                 await member.roles.remove(askidaRolID).catch(() => {});
-                await askidaRecord.destroy();
+                
+                // ⭐️ DÜZELTME 2: Sequelize'den Mongoose'a: destroy() yerine deleteOne()
+                await askidaRecord.deleteOne();
 
                 const replyContent = `${member} \`kullanıcısının rolleri geri verildi ve askıdan çıkarıldı.\``;
                 return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: false }) : channel.send(replyContent);
             }
 
-            // Kullanıcı askıda değilse
+            // Kullanıcı askıda değilse (Askıya Alma İşlemi)
             const alinacakRoller = member.roles.cache
                 .filter(r => yetkiliRolleri.includes(r.id))
                 .map(r => r.id);
@@ -91,11 +96,13 @@ module.exports = {
                 return replied ? interactionOrMessage.editReply({ content: replyContent, ephemeral: true }) : channel.send(replyContent);
             }
 
+            // Veritabanına kaydetme (create metodu Mongoose'da da mevcuttur ve doğru kullanılmış)
             await client.Askida.create({
                 memberId: memberId,
                 roles: alinacakRoller
             });
 
+            // Rolleri al ve askı rolünü ver
             await member.roles.remove(alinacakRoller).catch(() => {});
             await member.roles.add(askidaRolID).catch(() => {});
 
