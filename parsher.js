@@ -1,11 +1,12 @@
 const { Client, Collection, GatewayIntentBits, Partials, ActivityType } = require('discord.js');
 const fs = require('fs');
-const db = require("quick.db");
+// const db = require("quick.db"); // Kaldırıldı: quick.db artık kullanılmayacak.
 const { prefix } = require('./Settings/config.json');
 require('dotenv').config();
 require('./stayInVoice.js');
 const express = require('express');
-const { Sequelize, DataTypes } = require('sequelize'); // DataTypes eklenmeli
+// const { Sequelize, DataTypes } = require('sequelize'); // Kaldırıldı: Sequelize artık kullanılmayacak.
+const mongoose = require('mongoose'); // ⭐️ Eklendi: MongoDB için Mongoose
 
 // Bot istemcisini modern intentlerle başlatın
 const client = new Client({
@@ -33,6 +34,46 @@ for (const file of commandFiles) {
         slashCommands.push(command.data.toJSON());
     }
 }
+
+// -------------------------------------------------------------
+// ⭐️ MONGODB BAĞLANTISI VE MODEL TANIMI
+// -------------------------------------------------------------
+
+// Modeli tanımlayın (Sequelize modelinin MongoDB/Mongoose karşılığı)
+const AskidaSchema = new mongoose.Schema({
+    // memberId Sequelize'deki PrimaryKey'in karşılığıdır
+    memberId: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    // roles de Sequelize'deki JSONB'nin karşılığıdır
+    roles: {
+        type: mongoose.Schema.Types.Mixed, // Her türlü karışık veri için
+        required: true,
+    },
+}, {
+    // MongoDB'de varsayılan olarak gelen '_id' yerine
+    // memberId'yi kullanmak yaygındır, ancak bu ayar koleksiyon adını belirtir.
+    timestamps: false,
+    collection: 'askida' // Koleksiyon adı
+});
+
+// Mongoose modelini oluşturun.
+const Askida = mongoose.model('Askida', AskidaSchema);
+
+// MongoDB'ye bağlanın
+mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+    .then(() => console.log('✅ MongoDB veritabanına başarıyla bağlandı.'))
+    .catch(err => console.error('❌ MongoDB veritabanına bağlanırken hata oluştu:', err));
+
+// DİKKAT: Yeni Mongoose modelini client objesine ekliyoruz.
+client.Askida = Askida;
+
+// -------------------------------------------------------------
 
 // Bot hazır olduğunda çalışacak kod
 client.once('clientReady', async () => {
@@ -187,42 +228,5 @@ app.get('/', (req, res) => res.status(200).send('Çalışma Süresi Botuna Göre
 app.listen(port, () => {
     console.log(`Sunucu ${port} portunda çalışıyor`);
 });
-
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-    dialect: 'postgres',
-    dialectOptions: {
-        ssl: {
-            require: true,
-            rejectUnauthorized: false
-        }
-    },
-    logging: false
-});
-
-// Modeli tanımlayın
-const Askida = sequelize.define('Askida', {
-  memberId: {
-    type: DataTypes.STRING,
-    primaryKey: true,
-    allowNull: false,
-  },
-  roles: {
-    type: DataTypes.JSONB,
-    allowNull: false,
-  },
-}, {
-    timestamps: false,
-    tableName: 'askida'
-});
-
-// Veritabanına bağlanın ve tabloyu senkronize edin
-sequelize.authenticate()
-    .then(() => console.log('Veritabanına başarıyla bağlandı.'))
-    .catch(err => console.error('Veritabanına bağlanırken hata oluştu:', err));
-
-sequelize.sync();
-
-// DİKKAT: Sequelize modelini client objesine ekliyoruz.
-client.Askida = Askida;
 
 client.login(process.env.DISCORD_TOKEN);
