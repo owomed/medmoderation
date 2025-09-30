@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, GuildMember, PermissionsBitField } = require('discord.js');
-const db = require("quick.db"); 
+// const db = require("quick.db"); // quick.db kaldırıldı.
 const id = require('../Settings/idler.json');
 const ayar = require('../Settings/config.json');
 
@@ -17,6 +17,7 @@ module.exports = {
                 .setRequired(true)),
     async execute(interactionOrMessage) {
         let member, reason, targetId, channel, author, isSlash;
+        const client = interactionOrMessage.client;
         const banYetkiliRolleri = id.Ban.banyetkiliid;
 
         if (interactionOrMessage.isCommand?.()) {
@@ -36,7 +37,7 @@ module.exports = {
             targetId = args[1];
         }
 
-        // Yetki kontrolü
+        // Yetki kontrolü (Aynı kaldı)
         const requesterMember = await interactionOrMessage.guild.members.fetch(author.id);
         const hasRolePermission = requesterMember.roles.cache.some(role => banYetkiliRolleri.includes(role.id));
         const isBotOwner = author.id === ayar.sahip;
@@ -50,6 +51,7 @@ module.exports = {
             }
         }
 
+        // Bot yetki kontrolü (Aynı kaldı)
         const botMember = await interactionOrMessage.guild.members.fetch(interactionOrMessage.client.user.id);
         if (!botMember.permissions.has(PermissionsBitField.Flags.BanMembers)) {
             const replyMessage = '`Botun bu komudu kullanmak için gerekli izinlere sahip değil!`';
@@ -60,7 +62,7 @@ module.exports = {
             }
         }
 
-        // Sebep ve hedef kontrolü
+        // Sebep ve hedef kontrolü (Aynı kaldı)
         if (!targetId || !reason) {
             const replyMessage = '`Banlayabilmek için üye veya ID ve sebep belirtmelisin!`';
             if (isSlash) {
@@ -70,7 +72,7 @@ module.exports = {
             }
         }
 
-        // Pozisyon kontrolü
+        // Pozisyon kontrolü (Aynı kaldı)
         if (member instanceof GuildMember && requesterMember.roles.highest.position <= member.roles.highest.position) {
             const replyMessage = '`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`';
             if (isSlash) {
@@ -99,8 +101,23 @@ module.exports = {
         try {
             await interactionOrMessage.guild.members.ban(userToBan.id, { reason: reason });
 
-            db.push(`üye.${userToBan.id}.sicil`, { Yetkili: author.id, Tip: "BAN", Sebep: reason, Zaman: Date.now() });
+            // ⭐️ MONGODB (Mongoose) SİCİL KAYDI
+            const sicilData = {
+                Yetkili: author.id,
+                Tip: "BAN",
+                Sebep: reason,
+                Zaman: Date.now()
+            };
 
+            // Sicil modelini kullanarak kullanıcının sicil dizisine yeni kaydı ekle
+            // upsert: true, eğer kullanıcı kaydı yoksa yeni bir doküman oluşturur.
+            await client.Sicil.findOneAndUpdate(
+                { memberId: userToBan.id },
+                { $push: { sicil: sicilData } },
+                { upsert: true, new: true }
+            );
+
+            // Log Embed ve Mesajlar (Aynı kaldı)
             const banEmbed = new EmbedBuilder()
                 .setColor('#FF0000')
                 .setTitle('Kullanıcı Yasaklandı')
@@ -125,6 +142,7 @@ module.exports = {
                 return interactionOrMessage.reply(successMsg);
             }
         } catch (error) {
+            console.error('Komut çalıştırma hatası:', error);
             const replyMessage = '`Bir hata oluştu veya kullanıcı zaten banlanmış olabilir!`';
             if (isSlash) {
                 return interactionOrMessage.reply({ content: replyMessage, ephemeral: true });
