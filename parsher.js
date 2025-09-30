@@ -1,12 +1,10 @@
 const { Client, Collection, GatewayIntentBits, Partials, ActivityType } = require('discord.js');
 const fs = require('fs');
-// const db = require("quick.db"); // Kaldırıldı: quick.db artık kullanılmayacak.
+const mongoose = require('mongoose'); // ⭐️ Eklendi: MongoDB için Mongoose
 const { prefix } = require('./Settings/config.json');
 require('dotenv').config();
 require('./stayInVoice.js');
 const express = require('express');
-// const { Sequelize, DataTypes } = require('sequelize'); // Kaldırıldı: Sequelize artık kullanılmayacak.
-const mongoose = require('mongoose'); // ⭐️ Eklendi: MongoDB için Mongoose
 
 // Bot istemcisini modern intentlerle başlatın
 const client = new Client({
@@ -29,49 +27,70 @@ for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
     client.commands.set(command.name, command);
 
-    // Eğer komutun slash komut verisi varsa, bunu kaydet
     if (command.data) {
         slashCommands.push(command.data.toJSON());
     }
 }
 
 // -------------------------------------------------------------
-// ⭐️ MONGODB BAĞLANTISI VE MODEL TANIMI
+// ⭐️ MONGODB BAĞLANTISI VE MODEL TANIMLARI
 // -------------------------------------------------------------
 
-// Modeli tanımlayın (Sequelize modelinin MongoDB/Mongoose karşılığı)
+// Askida Modeli: Mevcut siciller_ve_askidakiler koleksiyonunu kullanır
 const AskidaSchema = new mongoose.Schema({
-    // memberId Sequelize'deki PrimaryKey'in karşılığıdır
     memberId: {
         type: String,
         required: true,
-        unique: true
+        unique: true,
     },
-    // roles de Sequelize'deki JSONB'nin karşılığıdır
     roles: {
-        type: mongoose.Schema.Types.Mixed, // Her türlü karışık veri için
+        type: mongoose.Schema.Types.Mixed, // JSONB/Array karşılığı
         required: true,
     },
 }, {
-    // MongoDB'de varsayılan olarak gelen '_id' yerine
-    // memberId'yi kullanmak yaygındır, ancak bu ayar koleksiyon adını belirtir.
     timestamps: false,
-    collection: 'askida' // Koleksiyon adı
+    collection: 'siciller_ve_askidakiler' // FOTOĞRAFTAKİ KOLEKSİYON
 });
 
-// Mongoose modelini oluşturun.
 const Askida = mongoose.model('Askida', AskidaSchema);
+
+// Sicil Modeli: Yeni siciller koleksiyonunu kullanır
+const SicilSchema = new mongoose.Schema({
+    memberId: { 
+        type: String, 
+        required: true, 
+        unique: true 
+    },
+    sicil: { 
+        type: [
+            {
+                Yetkili: String,
+                Tip: String,
+                Sebep: String,
+                Zaman: Number 
+            }
+        ], 
+        default: [] 
+    },
+}, {
+    timestamps: false,
+    collection: 'siciller' // YENİ KOLEKSİYON İSMİ
+});
+
+const Sicil = mongoose.model('Sicil', SicilSchema);
+
 
 // MongoDB'ye bağlanın
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 })
-    .then(() => console.log('✅ MongoDB veritabanına başarıyla bağlandı.'))
+    .then(() => console.log('✅ MongoDB veritabanına (medkayit) başarıyla bağlandı.'))
     .catch(err => console.error('❌ MongoDB veritabanına bağlanırken hata oluştu:', err));
 
-// DİKKAT: Yeni Mongoose modelini client objesine ekliyoruz.
+// Mongoose modellerini client objesine ekliyoruz.
 client.Askida = Askida;
+client.Sicil = Sicil;
 
 // -------------------------------------------------------------
 
@@ -145,7 +164,7 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Özel tarih formatlama işlevi
+// Özel tarih formatlama işlevi (Aynı kaldı)
 Date.prototype.toTurkishFormatDate = function (format) {
     let date = this,
     day = date.getDate(),
@@ -185,7 +204,7 @@ Date.prototype.toTurkishFormatDate = function (format) {
     return format;
 };
 
-// Özel tarih hesaplama işlevi
+// Özel tarih hesaplama işlevi (Aynı kaldı)
 client.tarihHesapla = (date) => {
     const startedAt = Date.parse(date);
     var msecs = Math.abs(new Date() - startedAt);
@@ -219,7 +238,7 @@ client.tarihHesapla = (date) => {
     return `\`${string} önce\``;
 };
 
-// Express.js sunucusu oluştur
+// Express.js sunucusu oluştur (Aynı kaldı)
 const app = express();
 const port = 3000;
 
