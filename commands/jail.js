@@ -17,6 +17,11 @@ module.exports = {
                 .setDescription('Jail sebebi.')
                 .setRequired(true)),
 
+    // Prefix komutu bilgisi
+    name: 'jail',
+    description: 'Belirtilen kullanıcıyı jaile atar.',
+    aliases: [],
+
     async execute(interactionOrMessage) {
         let member, reason, author, channel, guild, isSlash;
         const client = interactionOrMessage.client;
@@ -26,7 +31,7 @@ module.exports = {
         const jailRolID = id.Jail.jailrolid;
         const botSahipID = ayar.sahip;
 
-        // Komutun prefix mi yoksa slash mı olduğunu kontrol et
+        // ... (Komut değişkenlerini atama kısmı aynı kaldı) ...
         if (interactionOrMessage.isCommand?.()) {
             isSlash = true;
             author = interactionOrMessage.user;
@@ -46,7 +51,7 @@ module.exports = {
         
         const requesterMember = await guild.members.fetch(author.id);
 
-        // SADECE ROL VE SAHİP KONTROLÜ (Aynı Kaldı)
+        // ... (Kontroller Aynı Kaldı) ...
         const isAuthorized =
             requesterMember.roles.cache.some(role => jailyetkiliRolleri.includes(role.id)) ||
             author.id === botSahipID;
@@ -58,7 +63,6 @@ module.exports = {
                 : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
 
-        // Üye ve sebep kontrolü (Aynı Kaldı)
         if (!member || !reason) {
             const replyMessage = '`Jaile atabilmek için üye ve sebep belirtmelisin!`';
             return isSlash
@@ -66,7 +70,6 @@ module.exports = {
                 : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
 
-        // Jail rolü kontrolü (Aynı Kaldı)
         if (member.roles.cache.has(jailRolID)) {
             const replyMessage = '`Etiketlenen üye zaten jailde!`';
             return isSlash
@@ -74,7 +77,6 @@ module.exports = {
                 : interactionOrMessage.reply(replyMessage).then(x => setTimeout(() => x.delete(), 3000));
         }
 
-        // Pozisyon kontrolü (Aynı Kaldı)
         if (requesterMember.roles.highest.position <= member.roles.highest.position) {
             const replyMessage = '`Etiketlediğin kullanıcı senden üst veya senle aynı pozisyonda!`';
             return isSlash
@@ -86,25 +88,29 @@ module.exports = {
 
         // 1. Kullanıcının rollerini al ve kaydet
         const oldRoles = member.roles.cache
-            .filter(r => r.id !== guild.id) // @everyone rolünü hariç tut
+            .filter(r => r.id !== guild.id) 
             .map(role => role.id);
             
         try {
-            // Roller Mongoose'daki Askida modeline kaydediliyor (Çünkü Askıda modeli, rolleri depolamak için tasarlanmıştı)
-            // Eski quick.db: db.set(`üye.${member.id}.roller`, oldRoles);
+            // Roller Askida modeline kaydediliyor, ancak JAIL kaynağı ekleniyor.
+            // Bu sayede veritabanında bu kaydın bir jail işlemi olduğunu bileceksiniz.
             await client.Askida.findOneAndUpdate(
                 { memberId: member.id },
-                { roles: oldRoles },
+                { 
+                    roles: oldRoles, 
+                    kaynak: 'JAIL' // ⭐️ Etiket Eklendi
+                },
                 { upsert: true, new: true }
             );
 
             // 2. Kullanıcının tüm rollerini silip jail rolünü ver
+            // Bu işlem rolleri sildiği için, yukarıdaki kaydetme zorunludur.
             await member.roles.set([jailRolID]);
             
-            // 3. Sicil kaydını ekle (Tıpkı ban komutunda yaptığımız gibi)
+            // 3. Sicil kaydını ekle
             const sicilData = {
                 Yetkili: author.id,
-                Tip: "JAIL", // Sicil tipi: JAIL
+                Tip: "JAIL", 
                 Sebep: reason,
                 Zaman: Date.now()
             };
@@ -117,6 +123,7 @@ module.exports = {
 
             // ⭐️ MONGODB İŞLEMLERİ BİTİŞ
             
+            // ... (Embed ve Mesaj Gönderme Kodları Aynı Kaldı) ...
             const jailEmbed = new EmbedBuilder()
                 .setColor('#1E1F22')
                 .setTitle('Kullanıcı Hapse Atıldı')
